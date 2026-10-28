@@ -1,0 +1,13 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>JD Filler - profile smoke test</title><link rel="stylesheet" href="popup.css">
+<style>body { width: auto; max-height: none; overflow: auto; } .harness { position: fixed; right: 8px; top: 8px; font: 11px monospace; background: #fef3c7; color: #78350f; padding: 4px 8px; border-radius: 6px; z-index: 9; }</style></head>
+<body class="page-body"><div class="harness">HARNESS: fake chrome.storage</div><div id="root"></div>
+<script>
+(function () { const mem = {}; window.chrome = { storage: { local: { get: async (k) => { const ks = Array.isArray(k) ? k : [k]; const o = {}; for (const x of ks) if (x in mem) o[x] = mem[x]; return o; }, set: async (o) => { Object.assign(mem, o); window.HARNESS_SAVED = JSON.parse(JSON.stringify(mem)); } } } }; })();
+(async () => {
+  const html = await (await fetch('profile.html')).text();
+  document.getElementById('root').innerHTML = html.replace(/[\s\S]*<body[^>]*>/, '').replace(/<\/body>[\s\S]*/, '').replace(/<script[^>]*><\/script>/g, '');
+  await new Promise((r) => { const s = document.createElement('script'); s.src = 'profile.js'; s.onload = r; document.body.appendChild(s); });
+  document.dispatchEvent(new Event('DOMContentLoaded'));
+})();
+</script></body></html>

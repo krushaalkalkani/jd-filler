@@ -34,6 +34,7 @@
       "description": "Open JD Filler on the current job page"
     }
   },
+  "options_ui": { "page": "profile.html", "open_in_tab": true },
   "background": {
     "service_worker": "background.js"
   },

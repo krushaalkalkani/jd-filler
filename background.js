@@ -11,14 +11,7 @@ const TIMEOUT_MS = 20000;
 const JD_MAX_CHARS = 12000;
 
 // ---------- profile + rules (cached system prompt) ----------
-const SYSTEM_PROMPT = `You are a job-fit screener for one specific candidate. You read ONE job posting and return a strict JSON verdict.
-
-HARD RULES
-- Use only facts stated in the job description or the page facts given. If a field is not stated, return exactly "Not stated". Never invent pay, location, company, years, or work mode.
-- Quote work-authorization sentences exactly as written in the JD (sponsorship, visa, H-1B, OPT, citizenship, clearance, ITAR, E-Verify, C2C).
-- Never claim the candidate has more than the evidence levels below.
-
-CANDIDATE PROFILE
+const DEFAULT_PROFILE_BLOCK = `CANDIDATE PROFILE
 - MS in Computer Science, Florida Atlantic University, May 2026. On F-1 OPT, then STEM OPT, then H-1B. Does not need sponsorship to start. The answer to "will you require sponsorship in the future" is always Yes.
 - Target roles: ML Engineer, AI Engineer, Applied Scientist, Data Scientist, GenAI/LLM Engineer, MLOps Engineer. Also close software roles (Software Engineer, Data Engineer, Backend/Python). Level: entry level, new grad, I, junior, associate, early career. Not Senior, Lead, Staff, Principal or III, and not 4+ years.
 - Minimum pay $60K/year. Open to anywhere in the US and remote. Priority cities: SF Bay Area, LA, San Diego, NYC, Seattle, Boston, Austin, Chicago, DC, Florida.
@@ -28,13 +21,22 @@ CANDIDATE PROFILE
   NONE (never claim, mark Gap): Java, C++, Go, Scala, Rust, AWS, GCP, Azure, Kubernetes, Spark, LangChain, LlamaIndex, vector DBs, fine-tuning, Claude Code.
   No record (mark Gap): Airflow, CUDA, vLLM, React, TypeScript.
 - Certifications: ML in Production, Agentic AI, RAG, GenAI with LLMs, ML Specialization.
-- Languages: English, Hindi, Gujarati.
+- Languages: English, Hindi, Gujarati.`;
+
+const SYSTEM_PROMPT_TEMPLATE = `You are a job-fit screener for one specific candidate. You read ONE job posting and return a strict JSON verdict.
+
+HARD RULES
+- Use only facts stated in the job description or the page facts given. If a field is not stated, return exactly "Not stated". Never invent pay, location, company, years, or work mode.
+- Quote work-authorization sentences exactly as written in the JD (sponsorship, visa, H-1B, OPT, citizenship, clearance, ITAR, E-Verify, C2C).
+- Never claim the candidate has more than the evidence levels below.
+
+{{PROFILE}}
 
 SCORING (0-100, how strongly he should apply)
 - 85-100: target role, entry level, proven skills cover the core requirements, pay at or above $60K or not stated, no auth problem.
 - 70-84: target or close software role, entry level, mostly proven or partial skills, nothing blocking. Still worth applying.
 - 40-69: a real but weak fit: 3-4 years asked but not firm, several Gap skills, pay under $60K, 1099, contract under 6 months, seasonal, or "no visa sponsorship" (fine to start on OPT, but weaker).
-- 0-39: do not apply. Any of these forces a score of at most 20: US citizen only; green card / permanent resident only; security clearance; ITAR/EAR or "U.S. person"; C2C only; PhD required (not preferred); Senior/Staff/Principal/Lead/III in the title; a firm 3+ years required ("4 years in lieu of a degree" is NOT a years requirement); unpaid; under 20 hours a week; a required language other than English, Hindi or Gujarati; a role unrelated to software/data/AI.
+- 0-39: do not apply. Any of these forces a score of at most 20: US citizen only; green card / permanent resident only; security clearance; ITAR/EAR or "U.S. person"; C2C only; PhD required (not preferred); Senior/Staff/Principal/Lead/III in the title; a firm 3+ years required ("4 years in lieu of a degree" is NOT a years requirement); unpaid; under 20 hours a week; a required language the candidate does not speak (see Languages); a role unrelated to software/data/AI.
 - Rule hits listed in the page facts were found by regex and can be wrong (for example "Lead" in "Lead Generation"). Check each against the JD before letting it drive the score.
 
 OUTPUT
@@ -42,12 +44,40 @@ OUTPUT
 - auth.sponsorship: one of "Sponsors visa", "OPT/CPT OK", "Not mentioned", "No sponsorship", "US citizens only". auth.quotes: the exact sentences, or an empty list.
 - fit: the top 3 requirements of the job, each mapped to the candidate's evidence with level Strong, Partial or Gap.
 - lead_with: the 1-2 proven items to put first. dont_claim: what from the job he must not claim. do_now: one short action line.
-- red_flags: short strings, only real ones. Keep every string short and plain. No markdown.`;
+- keywords: 5-8 ATS keywords taken from the JD that he can truthfully put on his resume (PROVEN or SKILLS LIST items only, never NONE items). Short, exact wording from the JD.
+- red_flags: short strings, only real ones. Also flag scam signals: training fees, pay-to-work, profile marketing, personal email contact, no company name.
+- Keep every string short and plain. No markdown.`;
+
+
+function profileBlock(p) {
+  if (!p || !p.name) return DEFAULT_PROFILE_BLOCK;
+  const a = p.address || {};
+  const edu = (p.education || []).map((e) => `${[e.degree, e.field].filter(Boolean).join(' in ')}, ${e.school}${e.end ? ', ' + e.end : ''}${e.gpa ? ', GPA ' + e.gpa : ''}`).join('; ');
+  const exp = (p.experience || []).map((x) => `${x.title} at ${x.company}${x.start || x.end ? ` (${x.start || '?'} to ${x.end || '?'})` : ''}${x.bullets ? ': ' + String(x.bullets).replace(/\s*\n\s*/g, ' ') : ''}`).join('\n  - ');
+  const sk = p.skills || {};
+  const t = p.targets || {};
+  const eeo = p.eeo || {};
+  return `CANDIDATE PROFILE
+- ${String(p.summary || p.name).replace(/\.$/, '')}. Based in ${[a.city, a.state].filter(Boolean).join(', ') || 'the US'}.
+- Education: ${edu || 'Not stated'}.
+- Work status: ${eeo.visa || 'Not stated'}. Authorized to work in the US now: ${eeo.authorized || 'Yes'}. Will need sponsorship later: ${eeo.sponsorship || 'Yes'}.
+- Experience:
+  - ${exp || 'Not stated'}
+- Target roles: ${t.roles || 'Not stated'}. Level: ${t.levels || 'Entry level'}.
+- Minimum pay $${Number(t.minPay || 60000).toLocaleString('en-US')}/year. Locations: ${t.locations || 'Anywhere in the US'}.
+- Evidence levels (never exceed):
+  PROVEN (can lead with, mark Strong): ${sk.proven || 'none listed'}.
+  SKILLS LIST ONLY (mention, never lead with, mark Partial): ${sk.listed || 'none listed'}.
+  NONE (never claim, mark Gap): ${sk.never || 'none listed'}.
+  No record (mark Gap): ${sk.norecord || 'none listed'}.
+- Certifications: ${p.certifications || 'none listed'}.
+- Languages: ${p.languages || 'English'}.`;
+}
 
 const VERDICT_SCHEMA = {
   type: 'object',
   additionalProperties: false,
-  required: ['score', 'reason', 'company', 'role', 'location', 'work_mode', 'pay', 'level', 'years_asked', 'job_type', 'auth', 'fit', 'lead_with', 'dont_claim', 'do_now', 'red_flags'],
+  required: ['score', 'reason', 'company', 'role', 'location', 'work_mode', 'pay', 'level', 'years_asked', 'job_type', 'auth', 'fit', 'lead_with', 'dont_claim', 'do_now', 'keywords', 'red_flags'],
   properties: {
     score: { type: 'integer', description: 'Apply score from 0 to 100 per the scoring rubric' },
     reason: { type: 'string' },
@@ -80,6 +110,7 @@ const VERDICT_SCHEMA = {
     lead_with: { type: 'string' },
     dont_claim: { type: 'string' },
     do_now: { type: 'string' },
+    keywords: { type: 'array', items: { type: 'string' } },
     red_flags: { type: 'array', items: { type: 'string' } }
   }
 };
@@ -162,12 +193,13 @@ function buildUserMessage(job, rules) {
 async function claudeVerdict({ job, rules, deep }) {
   const { anthropicKey } = await getSettings();
   if (!anthropicKey) throw new ApiError('Add your Anthropic API key in Settings.', { code: 'no_key' });
+  const { profile } = await chrome.storage.local.get('profile');
   const model = deep ? MODELS.deep : MODELS.fast;
   const t0 = Date.now();
   const body = {
     model,
     max_tokens: 2048,
-    system: [{ type: 'text', text: SYSTEM_PROMPT, cache_control: { type: 'ephemeral' } }],
+    system: [{ type: 'text', text: SYSTEM_PROMPT_TEMPLATE.replace('{{PROFILE}}', profileBlock(profile)), cache_control: { type: 'ephemeral' } }],
     messages: [{ role: 'user', content: buildUserMessage(job, rules) }],
     output_config: { format: { type: 'json_schema', schema: VERDICT_SCHEMA } }
   };

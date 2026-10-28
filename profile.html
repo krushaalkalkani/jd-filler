@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>JD Filler profile</title>
+  <link rel="stylesheet" href="popup.css">
+  <style>body { width: auto; max-height: none; overflow: auto; }</style>
+</head>
+<body class="page-body">
+<div class="page">
+  <h1>Your profile</h1>
+  <p class="lead">Everything the extension knows about you. Each field has a copy button for application forms. Claude reads the education, experience and skills sections when it scores a job. Saved on this computer only.</p>
+
+  <h2>Basics</h2>
+  <div class="grid3">
+    <label>Full name<span class="field"><input data-k="name"><button class="cp quiet">Copy</button></span></label>
+    <label>Email<span class="field"><input data-k="email" type="email"><button class="cp quiet">Copy</button></span></label>
+    <label>Mobile<span class="field"><input data-k="phone" type="tel"><button class="cp quiet">Copy</button></span></label>
+  </div>
+  <div class="grid3">
+    <label>Street<span class="field"><input data-k="address.street"><button class="cp quiet">Copy</button></span></label>
+    <label>Apt / unit<span class="field"><input data-k="address.apt"><button class="cp quiet">Copy</button></span></label>
+    <label>City<span class="field"><input data-k="address.city"><button class="cp quiet">Copy</button></span></label>
+    <label>State<span class="field"><input data-k="address.state"><button class="cp quiet">Copy</button></span></label>
+    <label>ZIP<span class="field"><input data-k="address.zip"><button class="cp quiet">Copy</button></span></label>
+    <label>Country<span class="field"><input data-k="address.country"><button class="cp quiet">Copy</button></span></label>
+  </div>
+  <label>Full address on one line<span class="field"><input data-k="address.full" readonly><button class="cp quiet">Copy</button></span></label>
+  <label>One-line positioning (how Claude should describe you)<span class="field"><input data-k="summary"><button class="cp quiet">Copy</button></span></label>
+
+  <h2>Links</h2>
+  <div class="grid">
+    <label>LinkedIn<span class="field"><input data-k="links.linkedin" type="url"><button class="cp quiet">Copy</button></span></label>
+    <label>GitHub<span class="field"><input data-k="links.github" type="url"><button class="cp quiet">Copy</button></span></label>
+    <label>X<span class="field"><input data-k="links.x" type="url"><button class="cp quiet">Copy</button></span></label>
+    <label>Portfolio<span class="field"><input data-k="links.portfolio" type="url"><button class="cp quiet">Copy</button></span></label>
+    <label class="wide">Other link<span class="field"><input data-k="links.other" type="url"><button class="cp quiet">Copy</button></span></label>
+  </div>
+
+  <h2>Education</h2>
+  <div id="education"></div>
+  <button id="addEdu" class="quiet">Add education</button>
+
+  <h2>Work experience</h2>
+  <div id="experience"></div>
+  <button id="addExp" class="quiet">Add experience</button>
+
+  <h2>Skills</h2>
+  <p class="hint">Three honesty levels. Claude leads with the first, mentions the second, and never claims the third. Comma-separated.</p>
+  <label>Proven (can lead with)<span class="field"><textarea data-k="skills.proven" rows="3"></textarea><button class="cp quiet">Copy</button></span></label>
+  <label>On the skills list only (mention, never lead with)<span class="field"><textarea data-k="skills.listed" rows="2"></textarea><button class="cp quiet">Copy</button></span></label>
+  <label>Never claim<span class="field"><textarea data-k="skills.never" rows="2"></textarea><button class="cp quiet">Copy</button></span></label>
+  <label>No record yet (counts as a gap)<span class="field"><textarea data-k="skills.norecord" rows="1"></textarea><button class="cp quiet">Copy</button></span></label>
+  <div class="grid">
+    <label>Certifications<span class="field"><textarea data-k="certifications" rows="2"></textarea><button class="cp quiet">Copy</button></span></label>
+    <label>Languages<span class="field"><textarea data-k="languages" rows="2"></textarea><button class="cp quiet">Copy</button></span></label>
+  </div>
+
+  <h2>Targets</h2>
+  <div class="grid">
+    <label>Target roles<span class="field"><input data-k="targets.roles"><button class="cp quiet">Copy</button></span></label>
+    <label>Levels<span class="field"><input data-k="targets.levels"><button class="cp quiet">Copy</button></span></label>
+    <label>Minimum yearly pay (USD)<span class="field"><input data-k="targets.minPay" type="number"><button class="cp quiet">Copy</button></span></label>
+    <label>Priority locations<span class="field"><input data-k="targets.locations"><button class="cp quiet">Copy</button></span></label>
+  </div>
+
+  <h2>Work authorization and equal employment</h2>
+  <p class="hint">Standard answers for the questions every form asks. Pick "Decline to self-identify" where you prefer not to answer.</p>
+  <div class="grid">
+    <label>Legally authorized to work in the US?<span class="field"><select data-k="eeo.authorized"><option>Yes</option><option>No</option></select><button class="cp quiet">Copy</button></span></label>
+    <label>Will you now or in the future require sponsorship?<span class="field"><select data-k="eeo.sponsorship"><option>Yes</option><option>No</option></select><button class="cp quiet">Copy</button></span></label>
+    <label>Current visa / work status<span class="field"><input data-k="eeo.visa"><button class="cp quiet">Copy</button></span></label>
+    <label>Earliest start date<span class="field"><input data-k="eeo.startDate"><button class="cp quiet">Copy</button></span></label>
+    <label>Willing to relocate?<span class="field"><select data-k="eeo.relocate"><option>Yes</option><option>No</option></select><button class="cp quiet">Copy</button></span></label>
+    <label>Pronouns<span class="field"><input data-k="eeo.pronouns"><button class="cp quiet">Copy</button></span></label>
+    <label>Gender<span class="field"><select data-k="eeo.gender"><option>Male</option><option>Female</option><option>Non-binary</option><option>Decline to self-identify</option></select><button class="cp quiet">Copy</button></span></label>
+    <label>Hispanic or Latino?<span class="field"><select data-k="eeo.hispanic"><option>No</option><option>Yes</option><option>Decline to self-identify</option></select><button class="cp quiet">Copy</button></span></label>
+    <label>Race / ethnicity<span class="field"><select data-k="eeo.race"><option>Asian</option><option>White</option><option>Black or African American</option><option>Hispanic or Latino</option><option>Native American or Alaska Native</option><option>Native Hawaiian or Other Pacific Islander</option><option>Two or more races</option><option>Decline to self-identify</option></select><button class="cp quiet">Copy</button></span></label>
+    <label>Veteran status<span class="field"><select data-k="eeo.veteran"><option>I am not a protected veteran</option><option>I identify as one or more of the classifications of a protected veteran</option><option>Decline to self-identify</option></select><button class="cp quiet">Copy</button></span></label>
+    <label>Disability status<span class="field"><select data-k="eeo.disability"><option>No, I do not have a disability and have not had one in the past</option><option>Yes, I have a disability, or have had one in the past</option><option>I do not want to answer</option></select><button class="cp quiet">Copy</button></span></label>
+    <label>How did you hear about us? (default)<span class="field"><input data-k="eeo.source"><button class="cp quiet">Copy</button></span></label>
+  </div>
+
+  <footer class="bar">
+    <button id="copyAll" class="primary">Copy profile as text</button>
+    <button id="exportJson">Export JSON</button>
+    <button id="importJson">Import JSON</button>
+    <input id="importFile" type="file" accept="application/json" hidden>
+    <span class="msg" id="msg"></span>
+  </footer>
+</div>
+<template id="eduTpl">
+  <div class="entry">
+    <div class="entry-head"><span>Education</span><button class="quiet danger" data-remove>Remove</button></div>
+    <div class="grid3">
+      <label>School<span class="field"><input data-e="school"><button class="cp quiet">Copy</button></span></label>
+      <label>Degree<span class="field"><input data-e="degree"><button class="cp quiet">Copy</button></span></label>
+      <label>Field of study<span class="field"><input data-e="field"><button class="cp quiet">Copy</button></span></label>
+      <label>GPA<span class="field"><input data-e="gpa"><button class="cp quiet">Copy</button></span></label>
+      <label>Start (YYYY-MM)<span class="field"><input data-e="start"><button class="cp quiet">Copy</button></span></label>
+      <label>End (YYYY-MM)<span class="field"><input data-e="end"><button class="cp quiet">Copy</button></span></label>
+      <label class="wide">Location<span class="field"><input data-e="location"><button class="cp quiet">Copy</button></span></label>
+    </div>
+  </div>
+</template>
+<template id="expTpl">
+  <div class="entry">
+    <div class="entry-head"><span>Experience</span><button class="quiet danger" data-remove>Remove</button></div>
+    <div class="grid3">
+      <label>Company<span class="field"><input data-e="company"><button class="cp quiet">Copy</button></span></label>
+      <label>Title<span class="field"><input data-e="title"><button class="cp quiet">Copy</button></span></label>
+      <label>Location<span class="field"><input data-e="location"><button class="cp quiet">Copy</button></span></label>
+      <label>Start (YYYY-MM)<span class="field"><input data-e="start"><button class="cp quiet">Copy</button></span></label>
+      <label>End (YYYY-MM or Present)<span class="field"><input data-e="end"><button class="cp quiet">Copy</button></span></label>
+      <label>Employment type<span class="field"><input data-e="type" placeholder="Full-time / Internship / Part-time"><button class="cp quiet">Copy</button></span></label>
+    </div>
+    <label>What you did (one bullet per line, real facts only)<span class="field"><textarea data-e="bullets" rows="4"></textarea><button class="cp quiet">Copy</button></span></label>
+  </div>
+</template>
+<script src="profile.js"></script>
+</body>
+</html>
