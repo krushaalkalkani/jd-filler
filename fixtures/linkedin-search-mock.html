@@ -1,0 +1,73 @@
+<!doctype html>
+<!-- Hand-built mock of the logged-in LinkedIn /jobs/search layout that reproduced the HNTB bug:
+     left job list with another company's salary, a Premium "Low match" widget, people-you-can-reach, footer.
+     Replace with a real capture (Settings > Save page as fixture) when the DOM changes. -->
+<html lang="en"><head><meta charset="utf-8"><title>(2) Data Analyst I | HNTB | LinkedIn</title></head>
+<body>
+<nav class="global-nav"><a href="/jobs/">Jobs</a><a href="/premium/">Try Premium</a></nav>
+<main>
+<div class="scaffold-layout__list">
+  <ul class="jobs-search-results__list">
+    <li class="jobs-search-results__list-item"><div class="job-card-container">
+      <a class="job-card-list__title" href="/jobs/view/111/">Data Analyst</a>
+      <div class="artdeco-entity-lockup__subtitle">Kforce</div>
+      <div class="artdeco-entity-lockup__caption">Tampa, FL (Remote)</div>
+      <div class="job-card-container__metadata-item">$60/hr - $72/hr</div>
+    </div></li>
+    <li class="jobs-search-results__list-item jobs-search-results__list-item--active"><div class="job-card-container">
+      <a class="job-card-list__title" href="/jobs/view/4471234567/">Data Analyst I</a>
+      <div class="artdeco-entity-lockup__subtitle">HNTB</div>
+      <div class="artdeco-entity-lockup__caption">Miami, FL (On-site)</div>
+    </div></li>
+    <li class="jobs-search-results__list-item"><div class="job-card-container">
+      <a class="job-card-list__title" href="/jobs/view/222/">Senior Data Scientist</a>
+      <div class="artdeco-entity-lockup__subtitle">Acme Corp</div>
+      <div class="job-card-container__metadata-item">$150K/yr - $190K/yr</div>
+    </div></li>
+  </ul>
+</div>
+<div class="scaffold-layout__detail">
+  <div class="jobs-search__job-details--container">
+    <div class="jobs-details">
+      <div class="job-view-layout jobs-details">
+        <div class="job-details-jobs-unified-top-card__container--two-pane">
+          <div class="job-details-jobs-unified-top-card__company-name"><a href="https://www.linkedin.com/company/hntb/life">HNTB</a></div>
+          <div class="job-details-jobs-unified-top-card__job-title"><h1 class="t-24 t-bold inline">Data Analyst I</h1></div>
+          <div class="job-details-jobs-unified-top-card__tertiary-description-container">
+            <span class="tvm__text tvm__text--low-emphasis">Miami, FL</span><span class="tvm__text tvm__text--low-emphasis"> · </span>
+            <span class="tvm__text tvm__text--low-emphasis">2 days ago</span><span class="tvm__text"> · </span>
+            <span class="tvm__text tvm__text--low-emphasis">14 applicants</span>
+          </div>
+          <div class="job-details-fit-level-preferences">
+            <button class="job-details-preferences-and-skills__pill"><span>On-site</span><span class="visually-hidden">Matches your job preferences, workplace type is On-site.</span></button>
+            <button class="job-details-preferences-and-skills__pill"><span>Full-time</span><span class="visually-hidden">Matches your job preferences, job type is Full-time.</span></button>
+          </div>
+        </div>
+        <div class="job-details-premium-insight">
+          <h2 class="t-24">Low match to this role</h2>
+          <p>Premium insights: See how you compare to 14 applicants. $85K/yr median for this title.</p>
+          <button>Match details</button>
+        </div>
+        <div class="jobs-description">
+          <div class="jobs-description__content jobs-description-content">
+            <div id="job-details" class="jobs-box__html-content jobs-description-content__text--stretch">
+              <h2 class="text-heading-large">About the job</h2>
+              <p><strong>What We're Looking For</strong></p>
+              <p>HNTB is seeking a Data Analyst I to join our Miami office. This is an on-site position.</p>
+              <p>What You'll Do: build dashboards in Power BI, write SQL queries, and support project controls.</p>
+              <p>What You'll Need: Bachelor's degree in Computer Science or related field, or 4 years of relevant experience in lieu of a degree. 1+ years of experience with SQL and Python.</p>
+              <p>Candidates must be authorized to work in the United States without the need for employer sponsorship now or in the future.</p>
+              <p>The approximate pay range for this position is $55,000 - $70,000.</p>
+              <button class="jobs-description__footer-button">Show more</button>
+            </div>
+          </div>
+        </div>
+        <div class="jobs-details__people-you-can-reach"><h2>People you can reach out to</h2><p>Jane Doe, Recruiter at HNTB</p></div>
+        <div class="jobs-company__box"><h2>Company insights</h2><p>HNTB has 5,001-10,000 employees.</p></div>
+      </div>
+    </div>
+  </div>
+</div>
+</main>
+<footer class="global-footer"><p>About · Accessibility · Privacy Policy · LinkedIn Corporation © 2026</p></footer>
+</body></html>

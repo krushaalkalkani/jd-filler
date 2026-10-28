@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>JD Filler - extractor test</title>
+<style>
+  body { font: 13px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; margin: 16px; color: #1a1a1a; }
+  h1 { font-size: 18px; } .case { border: 1px solid #ddd; border-radius: 8px; padding: 10px 12px; margin: 10px 0; }
+  .case h2 { font-size: 14px; margin: 0 0 6px; display: flex; gap: 8px; align-items: center; }
+  .pass { color: #15803d; } .fail { color: #b91c1c; } .pill { font-size: 11px; padding: 1px 6px; border-radius: 10px; background: #eef2ff; }
+  pre { background: #f6f7f9; padding: 8px; border-radius: 6px; overflow: auto; max-height: 260px; font-size: 11.5px; white-space: pre-wrap; }
+  iframe { width: 1000px; height: 300px; border: 1px solid #eee; display: none; }
+  .checks li { margin: 2px 0; } .banner { padding: 6px 8px; border-radius: 6px; margin: 6px 0; }
+  .banner.skip { background: #fee2e2; color: #7f1d1d; } .banner.maybe { background: #fef3c7; color: #78350f; }
+  button { font: inherit; padding: 4px 8px; }
+</style>
+</head>
+<body>
+<h1>JD Filler extractor test</h1>
+<p>Runs <code>extractor.js</code> and <code>rules.js</code> against each saved page in <code>fixtures/</code>. Open this file directly or serve the folder (<code>python3 -m http.server</code>). Add a fixture with Settings &rarr; "Save page as fixture", drop the file in <code>fixtures/</code>, and add a <code>&lt;script&gt;</code> line below.</p>
+<div id="summary"></div>
+<div id="out"></div>
+
+<script src="rules.js"></script>
+<script src="fixtures/linkedin-search-mock.fixture.js"></script>
+<script src="fixtures/linkedin-guest-jpmorgan.fixture.js"></script>
+<script src="fixtures/greenhouse-anthropic.fixture.js"></script>
+<script src="fixtures/workday-nvidia.fixture.js"></script>
+<script src="fixtures/lever-palantir.fixture.js"></script>
+<script>
+const extractorUrl = new URL('extractor.js', location.href).href;
+
+function runFixture(fx) {
+  return new Promise((resolve) => {
+    const iframe = document.createElement('iframe');
+    iframe.srcdoc = fx.html;
+    iframe.addEventListener('load', () => {
+      const win = iframe.contentWindow;
+      win.__jdFillerTestUrl = fx.url;
+      const s = win.document.createElement('script');
+      s.src = extractorUrl;
+      s.onload = () => { try { resolve({ iframe, result: win.__jdFillerExtract() }); } catch (e) { resolve({ iframe, error: String(e) }); } };
+      s.onerror = () => resolve({ iframe, error: 'Could not load ' + extractorUrl });
+      win.document.head.appendChild(s);
+    });
+    document.body.appendChild(iframe);
+  });
+}
+
+function checks(fx, r) {
+  const out = [];
+  for (const [k, v] of Object.entries(fx.expect || {})) {
+    const got = String(r[k] == null ? '' : r[k]);
+    out.push({ ok: got.includes(v), text: `${k} contains "${v}"`, got });
+  }
+  for (const [k, list] of Object.entries(fx.expectNot || {})) {
+    const got = String(r[k] == null ? '' : r[k]);
+    for (const v of list) out.push({ ok: !got.includes(v), text: `${k} does not contain "${v}"`, got: got.length > 120 ? got.slice(0, 120) + '…' : got });
+  }
+  return out;
+}
+
+(async () => {
+  const outEl = document.getElementById('out');
+  let total = 0, passed = 0;
+  for (const fx of (window.JD_FIXTURES || [])) {
+    const box = document.createElement('div');
+    box.className = 'case';
+    const { iframe, result, error } = await runFixture(fx);
+    if (error) { box.innerHTML = `<h2><span class="fail">ERROR</span> ${fx.name}</h2><pre>${error}</pre>`; outEl.appendChild(box); total++; continue; }
+    const cs = checks(fx, result);
+    const ok = cs.every((c) => c.ok);
+    total++; if (ok) passed++;
+    const rules = window.JDRules ? window.JDRules.check(result) : { skip: [], maybe: [] };
+    const show = Object.assign({}, result, { jd: (result.jd || '').slice(0, 600) + ` …[${(result.jd || '').length} chars]` });
+    box.innerHTML = `
+      <h2><span class="${ok ? 'pass' : 'fail'}">${ok ? 'PASS' : 'FAIL'}</span> ${fx.name} <span class="pill">${result._debug ? result._debug.extractor : ''}${result._debug && result._debug.jsonld ? ' + JSON-LD' : ''}</span>
+        <button data-show>show page</button></h2>
+      <ul class="checks">${cs.map((c) => `<li class="${c.ok ? 'pass' : 'fail'}">${c.ok ? '✓' : '✗'} ${c.text}${c.ok ? '' : ` — got: <code>${c.got.replace(/</g, '&lt;')}</code>`}</li>`).join('')}</ul>
+      ${rules.skip.map((h) => `<div class="banner skip"><b>SKIP: ${h.rule}</b><br>"${h.quote.replace(/</g, '&lt;')}"</div>`).join('')}
+      ${rules.maybe.map((h) => `<div class="banner maybe"><b>MAYBE: ${h.rule}</b><br>"${h.quote.replace(/</g, '&lt;')}"</div>`).join('')}
+      <pre>${JSON.stringify(show, null, 2).replace(/</g, '&lt;')}</pre>`;
+    box.querySelector('[data-show]').addEventListener('click', () => { iframe.style.display = iframe.style.display === 'block' ? 'none' : 'block'; });
+    box.appendChild(iframe);
+    outEl.appendChild(box);
+  }
+  document.getElementById('summary').innerHTML = `<b class="${passed === total ? 'pass' : 'fail'}">${passed} / ${total} fixtures pass</b>`;
+})();
+</script>
+</body>
+</html>
