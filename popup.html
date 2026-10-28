@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>JD Filler</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <header class="top">
+    <div class="brand">
+      <span class="logo">JD</span>
+      <div>
+        <div class="title">JD Filler</div>
+        <div class="status" id="status">Reading page…</div>
+      </div>
+    </div>
+    <nav class="tabs">
+      <button class="tab active" data-tab="job">Job</button>
+      <button class="tab" data-tab="saved">Saved <span id="savedCount" class="pill">0</span></button>
+      <button class="tab" data-tab="settings">Settings</button>
+    </nav>
+  </header>
+
+  <section class="panel active" id="panel-job">
+    <div class="actions">
+      <button id="copyGrok" class="primary" title="Copy facts + full JD in the template format">Copy for Grok</button>
+      <button id="copyFacts" title="Copy only the quick facts">Facts only</button>
+      <button id="copyJson" title="Copy as JSON">JSON</button>
+      <button id="save" title="Keep this job in the Saved list">Save</button>
+      <button id="reextract" title="Read the page again">Re-read</button>
+    </div>
+
+    <div class="grid">
+      <label>Company<input id="f_company" type="text"></label>
+      <label>Role<input id="f_role" type="text"></label>
+      <label class="wide">Job link<input id="f_link" type="text"></label>
+      <label>Source
+        <select id="f_source">
+          <option>LinkedIn</option><option>Company Site</option><option>Indeed</option><option>Handshake</option><option>Glassdoor</option><option>Referral</option><option>Other</option>
+        </select>
+      </label>
+      <label>Location<input id="f_location" type="text"></label>
+      <label>Work mode
+        <select id="f_work_mode"><option>Remote</option><option>Hybrid</option><option>On-site</option><option>Unknown</option></select>
+      </label>
+      <label>Job type
+        <select id="f_job_type"><option>Full-time</option><option>Part-time</option><option>Contract</option><option>Internship</option><option>Co-op</option><option>Unknown</option></select>
+      </label>
+      <label>Salary<input id="f_salary" type="text"></label>
+      <label>Experience asked<input id="f_experience" type="text"></label>
+      <label>Sponsorship
+        <select id="f_sponsorship"><option>Sponsors</option><option>No sponsorship</option><option>Unknown</option></select>
+      </label>
+      <label>Seniority<input id="f_seniority" type="text"></label>
+      <label class="wide">Sponsorship note<input id="f_sponsorship_note" type="text"></label>
+      <label>Posted<input id="f_posted" type="text"></label>
+      <label>Applicants<input id="f_applicants" type="text"></label>
+      <label class="wide">Work auth lines (quoted from JD)<textarea id="f_auth_lines" rows="3"></textarea></label>
+      <label class="wide">Job description <span class="muted" id="jdLen"></span><textarea id="f_jd" rows="7"></textarea></label>
+    </div>
+    <div class="debug muted" id="debug"></div>
+  </section>
+
+  <section class="panel" id="panel-saved">
+    <div class="actions">
+      <button id="exportCsv" class="primary">Export CSV</button>
+      <button id="clearSaved" class="danger">Clear all</button>
+    </div>
+    <div id="savedList" class="list"></div>
+  </section>
+
+  <section class="panel" id="panel-settings">
+    <label class="wide">Copy template
+      <textarea id="template" rows="16" spellcheck="false"></textarea>
+    </label>
+    <div class="muted small">
+      Placeholders: {{company}} {{role}} {{link}} {{source}} {{location}} {{work_mode}} {{job_type}} {{salary}}
+      {{experience}} {{seniority}} {{sponsorship}} {{sponsorship_note}} {{auth_lines}} {{posted}} {{applicants}} {{deadline}} {{jd}} {{date}}.
+      "Facts only" copies everything above the line that contains {{jd}}.
+    </div>
+    <div class="actions">
+      <button id="saveTemplate" class="primary">Save template</button>
+      <button id="resetTemplate">Reset to default</button>
+    </div>
+    <div class="muted small">Shortcut: Cmd+Shift+J (Mac) / Ctrl+Shift+J opens this popup. Change it at chrome://extensions/shortcuts.</div>
+  </section>
+
+  <div id="toast" class="toast"></div>
+  <script src="popup.js"></script>
+</body>
+</html>
