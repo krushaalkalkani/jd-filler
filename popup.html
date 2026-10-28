@@ -24,7 +24,7 @@
 
   <section class="panel active" id="panel-job">
     <div class="actions">
-      <button id="check" class="primary" title="Ask Claude for a verdict on this job">Check</button>
+      <button id="check" class="primary" title="Ask Claude for an apply score (0-100) on this job">Check</button>
       <label class="toggle" title="Deep = Opus 5.5 at xhigh effort (slower). Off = Opus 5.5 at medium effort."><input type="checkbox" id="deep"> Deep</label>
       <button id="logNotion" title="Create a row in the Notion Application Tracker">Log to Notion</button>
       <button id="copyGrok" title="Copy facts + full JD in the template format">Copy for Grok</button>
@@ -89,7 +89,7 @@
       <label>Notion data source id<input id="s_notionDataSourceId" type="text"></label>
       <label>Notion database page id<input id="s_notionDatabaseId" type="text"></label>
     </div>
-    <label class="toggle block"><input type="checkbox" id="s_autoLog"> Log to Notion automatically when the verdict is APPLY</label>
+    <label class="toggle block"><input type="checkbox" id="s_autoLog"> Log to Notion automatically when the score is at least <input type="number" id="s_autoLogMin" min="0" max="100" step="5" class="num"> %</label>
     <label class="toggle block"><input type="checkbox" id="s_autoCheck"> Run Check automatically when the popup opens</label>
     <div class="actions"><button id="saveSettings" class="primary">Save settings</button><span id="settingsMsg" class="muted"></span></div>
     <div class="muted small">Model: claude-opus-5-5 (latest Opus). Deep = same model at xhigh effort instead of medium. Requests go only to api.anthropic.com and api.notion.com, with a 20 s timeout.</div>

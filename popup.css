@@ -81,3 +81,6 @@ h3 { font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: v
 @keyframes spin { to { transform: rotate(360deg); } }
 .badge { font-size: 10.5px; padding: 0 6px; border-radius: 8px; background: var(--pill); }
 .badge.APPLY { background: #dcfce7; color: #14532d; } .badge.MAYBE { background: #fef3c7; color: #78350f; } .badge.SKIP { background: #fee2e2; color: #7f1d1d; }
+
+.card .score { font-size: 16px; }
+input.num { width: 56px; padding: 2px 5px; margin: 0 4px; }

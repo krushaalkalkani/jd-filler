@@ -20,7 +20,9 @@ const DEFAULT_TEMPLATE = [
   '--- Job description ---',
   '{{jd}}'
 ].join('\n');
-const DEFAULT_SETTINGS = { anthropicKey: '', notionToken: '', notionDataSourceId: '42d52ecb-1841-82ad-939d-87b508593635', notionDatabaseId: '54352ecb18418259b0fc817076dabcbc', autoLog: true, autoCheck: false, deep: false };
+const DEFAULT_SETTINGS = { anthropicKey: '', notionToken: '', notionDataSourceId: '42d52ecb-1841-82ad-939d-87b508593635', notionDatabaseId: '54352ecb18418259b0fc817076dabcbc', autoLog: true, autoLogMin: 70, autoCheck: false, deep: false };
+const bandFor = (score) => (score >= 70 ? 'APPLY' : score >= 40 ? 'MAYBE' : 'SKIP');
+const scoreLabel = (v) => (v && typeof v.score === 'number' ? `${v.score}%` : (v && v.verdict) || '');
 
 let current = null;   // last extracted/edited job
 let lastRules = null; // last rule result
@@ -162,8 +164,9 @@ function verdictCard(v, meta) {
   const quotes = (v.auth && v.auth.quotes || []).filter(Boolean);
   const fit = (v.fit || []).slice(0, 3).map((f) => `${esc(f.point)}<span class="tag ${esc(f.level)}">${esc(f.level)}</span>`).join('; ');
   const flags = (v.red_flags || []).filter(Boolean);
-  return `<div class="card ${esc(v.verdict)}">
-    <div class="line"><span class="v">${esc(v.verdict)}</span> - ${esc(v.company)}, ${esc(v.role)} | ${esc(v.location)}, ${esc(v.work_mode)} | ${esc(v.pay)} | ${esc(v.level)}</div>
+  const band = v.verdict || bandFor(v.score || 0);
+  return `<div class="card ${esc(band)}">
+    <div class="line"><span class="v score">${typeof v.score === 'number' ? v.score + '%' : esc(band)}</span> - ${esc(v.company)}, ${esc(v.role)} | ${esc(v.location)}, ${esc(v.work_mode)} | ${esc(v.pay)} | ${esc(v.level)}</div>
     ${line('Auth:', `${esc(v.auth && v.auth.sponsorship)}${quotes.length ? ' - ' + quotes.map((q) => `"${esc(q)}"`).join(' ') : ''} | OPT day ${optDay()}/${OPT_LIMIT}`)}
     ${line('Fit:', fit || '(none)')}
     ${line('Lead with:', esc(v.lead_with))}
@@ -194,7 +197,8 @@ async function doCheck() {
     lastVerdict = res.verdict;
     current = Object.assign(current || {}, { verdict: res.verdict, verdict_meta: res.meta });
     box.innerHTML = verdictCard(res.verdict, res.meta);
-    if (res.verdict.verdict === 'APPLY' && settings.autoLog) await logToNotion(true);
+    const score = typeof res.verdict.score === 'number' ? res.verdict.score : (res.verdict.verdict === 'APPLY' ? 100 : 0);
+    if (settings.autoLog && score >= Number(settings.autoLogMin || 70)) await logToNotion(true);
   } catch (e) {
     box.innerHTML = errorBox('Claude:', e.message, 'retryCheck');
     $('#retryCheck').addEventListener('click', doCheck);
@@ -215,7 +219,7 @@ function notionLine(html) { $('#notion').innerHTML = html; }
 async function logToNotion(auto) {
   const job = read();
   if (!job.link) { toast('No job link to log'); return; }
-  notionLine(`<span class="spin"></span>${auto ? 'APPLY - logging to Notion…' : 'Logging to Notion…'}`);
+  notionLine(`<span class="spin"></span>${auto ? 'Score above threshold - logging to Notion…' : 'Logging to Notion…'}`);
   $('#logNotion').disabled = true;
   try {
     const res = await send({ type: 'notion.create', job: stripForApi(job), verdict: lastVerdict });
@@ -295,7 +299,7 @@ async function renderSaved() {
   if (!jobs.length) { list.innerHTML = '<div class="empty">Nothing saved yet. Open a job and press Save.</div>'; return; }
   list.innerHTML = jobs.map((j, i) => `
     <div class="item" data-i="${i}">
-      <div class="head"><span class="name">${esc(j.role || '(no title)')} ${j.verdict ? `<span class="badge ${esc(j.verdict.verdict)}">${esc(j.verdict.verdict)}</span>` : ''}</span><span class="muted">${esc((j.saved_at || '').slice(0, 10))}</span></div>
+      <div class="head"><span class="name">${esc(j.role || '(no title)')} ${j.verdict ? `<span class="badge ${esc(j.verdict.verdict || bandFor(j.verdict.score || 0))}">${esc(scoreLabel(j.verdict))}</span>` : ''}</span><span class="muted">${esc((j.saved_at || '').slice(0, 10))}</span></div>
       <div class="meta">${esc(j.company || '')} · ${esc(j.location || '')} · ${esc(j.work_mode || '')} · ${esc(j.source || '')} · ${esc(j.sponsorship || '')}${j.notion_url ? ` · <a href="${esc(j.notion_url)}" target="_blank">Notion</a>` : ''}</div>
       <div class="row">
         <button data-act="load">Load</button>
@@ -314,7 +318,7 @@ async function exportCsv() {
   const cols = [
     ['Role', 'role'], ['Company', 'company'], ['Job Link', 'link'], ['Location', 'location'], ['Work Mode', 'work_mode'], ['Source', 'source'],
     ['Sponsorship', 'sponsorship'], ['Job Type', 'job_type'], ['Salary', 'salary'], ['Experience', 'experience'], ['Seniority', 'seniority'],
-    ['Verdict', (j) => (j.verdict ? j.verdict.verdict : '')],
+    ['Score', (j) => (j.verdict && typeof j.verdict.score === 'number' ? j.verdict.score : '')], ['Band', (j) => (j.verdict ? j.verdict.verdict : '')],
     ['Stage', (j) => (j.applied ? 'Applied' : 'Saved')], ['Applied On', 'applied_on'], ['Saved On', (j) => (j.saved_at || '').slice(0, 10)], ['Notion', 'notion_url'],
     ['Notes', (j) => [j.verdict && j.verdict.reason, j.sponsorship_note, ...(j.auth_lines || [])].filter(Boolean).join(' | ')]
   ];
@@ -363,6 +367,7 @@ async function loadSettings() {
   $('#s_notionDataSourceId').value = s.notionDataSourceId;
   $('#s_notionDatabaseId').value = s.notionDatabaseId;
   $('#s_autoLog').checked = !!s.autoLog;
+  $('#s_autoLogMin').value = s.autoLogMin;
   $('#s_autoCheck').checked = !!s.autoCheck;
   $('#deep').checked = !!s.deep;
   return s;
@@ -374,6 +379,7 @@ async function saveSettings() {
     notionDataSourceId: $('#s_notionDataSourceId').value.trim(),
     notionDatabaseId: $('#s_notionDatabaseId').value.trim(),
     autoLog: $('#s_autoLog').checked,
+    autoLogMin: Math.max(0, Math.min(100, parseInt($('#s_autoLogMin').value, 10) || 70)),
     autoCheck: $('#s_autoCheck').checked
   });
   $('#settingsMsg').textContent = 'Saved.';

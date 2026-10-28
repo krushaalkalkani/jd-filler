@@ -30,13 +30,15 @@ CANDIDATE PROFILE
 - Certifications: ML in Production, Agentic AI, RAG, GenAI with LLMs, ML Specialization.
 - Languages: English, Hindi, Gujarati.
 
-VERDICT RULES
-- SKIP (auto): US citizen only; green card / permanent resident only; security clearance; ITAR/EAR or "U.S. person"; C2C only; PhD required (not preferred); Senior/Staff/Principal/Lead/III in the title; a firm 3+ years required ("4 years in lieu of a degree" is NOT a years requirement); unpaid; under 20 hours a week; a required language other than English, Hindi or Gujarati.
-- MAYBE: "no visa sponsorship" or "will not sponsor" (still fine to start on OPT, but flag it); 1099; contract under 6 months; seasonal; pay under $60K a year; 3-4 years asked but not firm.
-- APPLY otherwise, if it is a target or close software role, entry level, and pay is at or above $60K or not stated.
+SCORING (0-100, how strongly he should apply)
+- 85-100: target role, entry level, proven skills cover the core requirements, pay at or above $60K or not stated, no auth problem.
+- 70-84: target or close software role, entry level, mostly proven or partial skills, nothing blocking. Still worth applying.
+- 40-69: a real but weak fit: 3-4 years asked but not firm, several Gap skills, pay under $60K, 1099, contract under 6 months, seasonal, or "no visa sponsorship" (fine to start on OPT, but weaker).
+- 0-39: do not apply. Any of these forces a score of at most 20: US citizen only; green card / permanent resident only; security clearance; ITAR/EAR or "U.S. person"; C2C only; PhD required (not preferred); Senior/Staff/Principal/Lead/III in the title; a firm 3+ years required ("4 years in lieu of a degree" is NOT a years requirement); unpaid; under 20 hours a week; a required language other than English, Hindi or Gujarati; a role unrelated to software/data/AI.
+- Rule hits listed in the page facts were found by regex and can be wrong (for example "Lead" in "Lead Generation"). Check each against the JD before letting it drive the score.
 
 OUTPUT
-- verdict: APPLY, MAYBE or SKIP. reason: one line.
+- score: an integer 0-100 per the rubric. reason: one line that says what moved the score.
 - auth.sponsorship: one of "Sponsors visa", "OPT/CPT OK", "Not mentioned", "No sponsorship", "US citizens only". auth.quotes: the exact sentences, or an empty list.
 - fit: the top 3 requirements of the job, each mapped to the candidate's evidence with level Strong, Partial or Gap.
 - lead_with: the 1-2 proven items to put first. dont_claim: what from the job he must not claim. do_now: one short action line.
@@ -45,9 +47,9 @@ OUTPUT
 const VERDICT_SCHEMA = {
   type: 'object',
   additionalProperties: false,
-  required: ['verdict', 'reason', 'company', 'role', 'location', 'work_mode', 'pay', 'level', 'years_asked', 'job_type', 'auth', 'fit', 'lead_with', 'dont_claim', 'do_now', 'red_flags'],
+  required: ['score', 'reason', 'company', 'role', 'location', 'work_mode', 'pay', 'level', 'years_asked', 'job_type', 'auth', 'fit', 'lead_with', 'dont_claim', 'do_now', 'red_flags'],
   properties: {
-    verdict: { type: 'string', enum: ['APPLY', 'MAYBE', 'SKIP'] },
+    score: { type: 'integer', description: 'Apply score from 0 to 100 per the scoring rubric' },
     reason: { type: 'string' },
     company: { type: 'string' },
     role: { type: 'string' },
@@ -124,6 +126,10 @@ async function fetchJson(url, opts, label) {
 }
 
 // ---------- Anthropic ----------
+// Score bands. The band drives auto-log and the Saved/CSV labels; the number is what the card shows.
+const BANDS = { APPLY: 70, MAYBE: 40 };
+function bandFor(score) { return score >= BANDS.APPLY ? 'APPLY' : score >= BANDS.MAYBE ? 'MAYBE' : 'SKIP'; }
+
 function anthropicHeaders(key) {
   return {
     'content-type': 'application/json',
@@ -172,6 +178,8 @@ async function claudeVerdict({ job, rules, deep }) {
   if (!textBlock) throw new ApiError('Claude returned no text block.', { code: 'empty', retryable: true });
   let verdict;
   try { verdict = JSON.parse(textBlock.text); } catch (e) { throw new ApiError('Claude returned invalid JSON. Retry.', { code: 'parse', retryable: true }); }
+  verdict.score = Math.max(0, Math.min(100, Math.round(Number(verdict.score) || 0)));
+  verdict.verdict = bandFor(verdict.score);
   const u = res.usage || {};
   return { verdict, meta: { model: `${model} (${deep ? EFFORT.deep : EFFORT.fast})`, ms: Date.now() - t0, input: u.input_tokens || 0, output: u.output_tokens || 0, cache_read: u.cache_read_input_tokens || 0, cache_write: u.cache_creation_input_tokens || 0, stop_reason: res.stop_reason } };
 }

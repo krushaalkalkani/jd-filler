@@ -4,8 +4,8 @@ Personal Chrome extension. Open a job posting, press the toolbar button (or `Cmd
 
 1. **Clean facts** pulled from the page: company, role, link, source, location, work mode, job type, salary, experience asked, sponsorship (with the exact work-auth sentences), posted date, and the JD text.
 2. **A rule check in code** (no API call): a red banner for auto-skip hits and an amber one for maybes, each with the quoted sentence.
-3. **A Claude verdict** (APPLY / MAYBE / SKIP) with fit, what to lead with, what not to claim, and the next action.
-4. **A row in your Notion Application Tracker**, created automatically on APPLY (or by hand), with Undo.
+3. **A Claude apply score** (0 to 100) with fit, what to lead with, what not to claim, and the next action. 70 and up means apply, 40 to 69 is a maybe, under 40 is a skip.
+4. **A row in your Notion Application Tracker**, created automatically when the score reaches your threshold (default 70, or by hand), with Undo.
 
 Plus the original tools: editable fields, Copy for Grok (template), Saved list, CSV export.
 
@@ -49,9 +49,9 @@ Mapping: Greenhouse / Lever / Workday / Ashby / company sites -> "Company's care
 
 ## Buttons (Job tab)
 
-- **Check** - sends the page facts, the rule hits and the cleaned JD (max ~12k chars) to Claude and shows the card. Verdict rules, your profile and evidence levels live in the system prompt in `background.js` (cached with `cache_control`). Strict JSON comes back through structured outputs (`output_config.format`). The card: line 1 verdict / company / role / location / mode / pay / level, line 2 auth + quotes + `OPT day X/90`, then Fit (3 points tagged Strong / Partial / Gap), Lead with, Don't claim, Do now, red flags, and the model/time/token line.
+- **Check** - sends the page facts, the rule hits and the cleaned JD (max ~12k chars) to Claude and shows the card. The scoring rubric, your profile and evidence levels live in the system prompt in `background.js` (cached with `cache_control`). Strict JSON comes back through structured outputs (`output_config.format`). The card: line 1 score (coloured green 70+, amber 40 to 69, red under 40) / company / role / location / mode / pay / level, line 2 auth + quotes + `OPT day X/90`, then Fit (3 points tagged Strong / Partial / Gap), Lead with, Don't claim, Do now, red flags, and the model/time/token line.
 - **Deep** - toggle: Opus 5.5 at xhigh effort instead of medium. Slower, more careful. Remembered.
-- **Log to Notion** - creates the tracker row. It first queries the data source for the same Job Link and shows "Already logged" instead of creating a duplicate. On success you get the page link and an **Undo** button (moves the page to trash). The job is also saved and marked Applied in the Saved tab. With the Settings option on (default), this runs by itself when the verdict is APPLY.
+- **Log to Notion** - creates the tracker row. It first queries the data source for the same Job Link and shows "Already logged" instead of creating a duplicate. On success you get the page link and an **Undo** button (moves the page to trash). The job is also saved and marked Applied in the Saved tab. With the Settings option on (default), this runs by itself when the score is at least the threshold you set (default 70).
 - **Copy for Grok / Facts only / JSON / Save / Re-read** - as before. Re-read after you click a different job in a LinkedIn list.
 
 The OPT counter in the header is computed in code: day 1 = 2026-09-12, limit 90 days. Change `OPT_START` in `popup.js` if your EAD date differs.
