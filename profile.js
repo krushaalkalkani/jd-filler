@@ -1,10 +1,11 @@
 // profile.js - the profile page. Stored in chrome.storage.local under "profile". Autosaves.
+// Defaults hold only public, professional facts. Address, phone, email and EEO answers are filled in locally and never committed.
 const $ = (s) => document.querySelector(s);
 const $$ = (s) => Array.from(document.querySelectorAll(s));
 
 const DEFAULT_PROFILE = {
   name: 'Krushal Kalkani', email: '', phone: '',
-  address: { street: '5541 Pacific Blvd', apt: 'Apt 4107', city: 'Boca Raton', state: 'FL', zip: '33433', country: 'United States' },
+  address: { street: '', apt: '', city: 'Boca Raton', state: 'FL', zip: '', country: 'United States' },
   summary: 'Early-career Software / AI Engineer with real industry and research experience (MS CS, FAU, May 2026).',
   links: { linkedin: '', github: '', x: '', portfolio: '', other: '' },
   education: [
@@ -24,7 +25,7 @@ const DEFAULT_PROFILE = {
   certifications: 'ML in Production, Agentic AI, RAG, GenAI with LLMs, ML Specialization',
   languages: 'English, Hindi, Gujarati',
   targets: { roles: 'ML Engineer, AI Engineer, Applied Scientist, Data Scientist, GenAI/LLM Engineer, MLOps Engineer; close software roles (Software Engineer, Data Engineer, Backend/Python)', levels: 'Entry level, new grad, I, junior, associate, early career. Not Senior/Lead/Staff/Principal/III, not 4+ years', minPay: '60000', locations: 'Anywhere in the US and remote. Priority: SF Bay Area, LA, San Diego, NYC, Seattle, Boston, Austin, Chicago, DC, Florida' },
-  eeo: { authorized: 'Yes', sponsorship: 'Yes', visa: 'F-1 OPT (STEM OPT eligible), then H-1B', startDate: 'Immediately', relocate: 'Yes', pronouns: '', gender: 'Male', hispanic: 'No', race: 'Asian', veteran: 'I am not a protected veteran', disability: 'No, I do not have a disability and have not had one in the past', source: 'LinkedIn' }
+  eeo: { authorized: 'Yes', sponsorship: 'Yes', visa: 'F-1 OPT (STEM OPT eligible), then H-1B', startDate: 'Immediately', relocate: 'Yes', pronouns: '', gender: 'Decline to self-identify', hispanic: 'Decline to self-identify', race: 'Decline to self-identify', veteran: 'Decline to self-identify', disability: 'I do not want to answer', source: 'LinkedIn' }
 };
 
 let profile = null;
