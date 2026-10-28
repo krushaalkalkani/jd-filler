@@ -186,7 +186,7 @@ async function doCheck() {
   const settings = await store.getSettings();
   const deep = $('#deep').checked;
   const box = $('#verdict');
-  box.innerHTML = `<div class="card"><span class="spin"></span>Checking with ${deep ? 'Sonnet (deep)' : 'Haiku'}…</div>`;
+  box.innerHTML = `<div class="card"><span class="spin"></span>Checking with Opus 5.5${deep ? ' (deep, xhigh effort)' : ''}…</div>`;
   $('#check').disabled = true;
   try {
     const res = await send({ type: 'claude.verdict', job: stripForApi(job), rules, deep });

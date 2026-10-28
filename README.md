@@ -22,8 +22,8 @@ Both keys are stored in `chrome.storage.local` on this machine only. They are ne
 
 ### Anthropic API key
 1. Create a key at https://platform.claude.com/ (API keys).
-2. Paste it into **Anthropic API key**, press **Test**. The test lists the models your key can see and warns if `claude-haiku-5-5` or `claude-sonnet-5-5` is missing.
-3. Calls go from the extension's background worker straight to `api.anthropic.com` with the `anthropic-dangerous-direct-browser-access: true` header. Fast mode uses Haiku; the **Deep** toggle uses Sonnet.
+2. Paste it into **Anthropic API key**, press **Test**. The test lists the models your key can see and warns if `claude-opus-5-5` is missing.
+3. Calls go from the extension's background worker straight to `api.anthropic.com` with the `anthropic-dangerous-direct-browser-access: true` header. Every check uses Claude Opus 5.5 (`claude-opus-5-5`) at medium effort; the **Deep** toggle runs the same model at xhigh effort.
 
 ### Notion token and database
 1. Go to https://www.notion.so/profile/integrations -> **New integration** (internal). Copy the secret.
@@ -50,7 +50,7 @@ Mapping: Greenhouse / Lever / Workday / Ashby / company sites -> "Company's care
 ## Buttons (Job tab)
 
 - **Check** - sends the page facts, the rule hits and the cleaned JD (max ~12k chars) to Claude and shows the card. Verdict rules, your profile and evidence levels live in the system prompt in `background.js` (cached with `cache_control`). Strict JSON comes back through structured outputs (`output_config.format`). The card: line 1 verdict / company / role / location / mode / pay / level, line 2 auth + quotes + `OPT day X/90`, then Fit (3 points tagged Strong / Partial / Gap), Lead with, Don't claim, Do now, red flags, and the model/time/token line.
-- **Deep** - toggle: Sonnet instead of Haiku. Remembered.
+- **Deep** - toggle: Opus 5.5 at xhigh effort instead of medium. Slower, more careful. Remembered.
 - **Log to Notion** - creates the tracker row. It first queries the data source for the same Job Link and shows "Already logged" instead of creating a duplicate. On success you get the page link and an **Undo** button (moves the page to trash). The job is also saved and marked Applied in the Saved tab. With the Settings option on (default), this runs by itself when the verdict is APPLY.
 - **Copy for Grok / Facts only / JSON / Save / Re-read** - as before. Re-read after you click a different job in a LinkedIn list.
 

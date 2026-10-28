@@ -5,7 +5,8 @@ const ANTHROPIC_URL = 'https://api.anthropic.com/v1';
 const NOTION_URL = 'https://api.notion.com/v1';
 const ANTHROPIC_VERSION = '2026-10-21';
 const NOTION_VERSION = '2026-03-11';
-const MODELS = { fast: 'claude-haiku-5-5', deep: 'claude-sonnet-5-5' };
+const MODELS = { fast: 'claude-opus-5-5', deep: 'claude-opus-5-5' }; // Deep = same Opus at higher effort
+const EFFORT = { fast: 'medium', deep: 'xhigh' };
 const TIMEOUT_MS = 20000;
 const JD_MAX_CHARS = 12000;
 
@@ -164,7 +165,7 @@ async function claudeVerdict({ job, rules, deep }) {
     messages: [{ role: 'user', content: buildUserMessage(job, rules) }],
     output_config: { format: { type: 'json_schema', schema: VERDICT_SCHEMA } }
   };
-  if (!deep) body.output_config.effort = 'low';
+  body.output_config.effort = deep ? EFFORT.deep : EFFORT.fast;
   const res = await fetchJson(`${ANTHROPIC_URL}/messages`, { method: 'POST', headers: anthropicHeaders(anthropicKey), body: JSON.stringify(body) }, 'Claude');
   if (res.stop_reason === 'refusal') throw new ApiError('Claude declined this request (safety refusal).', { code: 'refusal' });
   const textBlock = (res.content || []).find((b) => b.type === 'text');
@@ -172,7 +173,7 @@ async function claudeVerdict({ job, rules, deep }) {
   let verdict;
   try { verdict = JSON.parse(textBlock.text); } catch (e) { throw new ApiError('Claude returned invalid JSON. Retry.', { code: 'parse', retryable: true }); }
   const u = res.usage || {};
-  return { verdict, meta: { model, ms: Date.now() - t0, input: u.input_tokens || 0, output: u.output_tokens || 0, cache_read: u.cache_read_input_tokens || 0, cache_write: u.cache_creation_input_tokens || 0, stop_reason: res.stop_reason } };
+  return { verdict, meta: { model: `${model} (${deep ? EFFORT.deep : EFFORT.fast})`, ms: Date.now() - t0, input: u.input_tokens || 0, output: u.output_tokens || 0, cache_read: u.cache_read_input_tokens || 0, cache_write: u.cache_creation_input_tokens || 0, stop_reason: res.stop_reason } };
 }
 
 async function claudeTest() {
