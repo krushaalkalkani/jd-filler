@@ -8,7 +8,7 @@
 <body>
   <header class="top">
     <div class="brand">
-      <span class="logo">JD</span>
+      <span class="logo" aria-hidden="true">JD</span>
       <div class="brand-text">
         <div class="title">JD Filler</div>
         <div class="status" id="status">Reading page…</div>
@@ -18,77 +18,89 @@
         <span id="weekStat" title="Applications this week against your goal (Settings)"></span>
       </div>
     </div>
-    <nav class="tabs">
-      <button class="tab active" data-tab="job">Job</button>
-      <button class="tab" data-tab="saved">Tracker <span id="savedCount" class="count">0</span></button>
-      <button class="tab" data-tab="settings">Settings</button>
-      <button class="tab" id="openProfile" title="Edit your profile, links, education, skills and EEO answers">Profile</button>
+    <nav class="segmented" role="tablist" aria-label="Sections">
+      <button class="tab active" role="tab" data-tab="job">Job</button>
+      <button class="tab" role="tab" data-tab="saved">Tracker <span id="savedCount" class="count">0</span></button>
+      <button class="tab" role="tab" data-tab="settings">Settings</button>
     </nav>
   </header>
 
   <section class="panel active" id="panel-job">
-    <div class="hero">
+    <div class="card hero">
       <div class="hero-main">
-        <div class="role" id="h_role">—</div>
         <div class="company-line"><span id="h_company"></span><span id="h_location"></span></div>
+        <div class="role" id="h_role">—</div>
         <div class="chips" id="h_chips"></div>
       </div>
-      <button class="ring" id="ringBtn" title="Get an apply score from Claude Opus 5.5">
-        <svg viewBox="0 0 48 48" width="56" height="56" aria-hidden="true">
+      <button class="ring" id="ringBtn" title="Score this job with Claude Opus 5.5">
+        <svg viewBox="0 0 48 48" width="64" height="64" aria-hidden="true">
           <circle class="ring-track" cx="24" cy="24" r="20"></circle>
           <circle class="ring-fill" id="ringFill" cx="24" cy="24" r="20"></circle>
         </svg>
-        <span class="ring-text" id="ringText">Check</span>
+        <span class="ring-text" id="ringText">Score</span>
       </button>
     </div>
-    <div class="links" id="h_links"></div>
 
-    <div class="actions">
-      <button id="check" class="primary">Check</button>
-      <label class="toggle" title="Deep = Opus 5.5 at xhigh effort (slower). Off = medium effort."><input type="checkbox" id="deep"> Deep</label>
-      <button id="logNotion">Log to Notion</button>
-      <button id="copyResume" title="Copy a resume-tailoring prompt with the keywords, fit and JD">Resume prompt</button>
-      <span class="grow"></span>
-      <button id="reextract" class="quiet" title="Read the page again">Re-read</button>
+    <div class="primary-row">
+      <button id="check" class="primary">Check fit</button>
+      <label class="switch" title="Deep: Opus 5.5 at xhigh effort. Slower, more careful.">
+        <input type="checkbox" id="deep"><span class="knob" aria-hidden="true"></span><span class="switch-label">Deep</span>
+      </label>
+      <div class="menu-wrap">
+        <button id="moreBtn" class="icon" aria-haspopup="menu" aria-expanded="false" title="More actions">
+          <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true"><circle cx="4" cy="9" r="1.6"/><circle cx="9" cy="9" r="1.6"/><circle cx="14" cy="9" r="1.6"/></svg>
+        </button>
+        <div class="menu" id="moreMenu" role="menu" hidden>
+          <button role="menuitem" id="reextract">Read the page again</button>
+          <button role="menuitem" id="copyResume">Copy resume prompt</button>
+          <button role="menuitem" id="copyFacts">Copy facts only</button>
+          <button role="menuitem" id="copyJson">Copy as JSON</button>
+          <div class="menu-sep"></div>
+          <div class="menu-links" id="h_links"></div>
+        </div>
+      </div>
     </div>
+
     <div id="notion" class="notion"></div>
     <div id="rules"></div>
     <div id="verdict"></div>
 
-    <details class="section" id="detailsFields">
-      <summary>Details <span class="muted">edit before you copy or log</span></summary>
-      <div class="grid">
-        <label>Company<input id="f_company" type="text"></label>
-        <label>Role<input id="f_role" type="text"></label>
-        <label class="wide">Job link<input id="f_link" type="text"></label>
-        <label>Source
-          <select id="f_source">
-            <option>LinkedIn</option><option>Company Site</option><option>Indeed</option><option>Handshake</option><option>Glassdoor</option><option>Sonic Jobs</option><option>Referral</option><option>Other</option>
-          </select>
-        </label>
-        <label>Location<input id="f_location" type="text"></label>
-        <label>Work mode
-          <select id="f_work_mode"><option>Remote</option><option>Hybrid</option><option>On-site</option><option>Unknown</option></select>
-        </label>
-        <label>Job type
-          <select id="f_job_type"><option>Full-time</option><option>Part-time</option><option>Contract</option><option>Internship</option><option>Co-op</option><option>Volunteer</option><option>Unknown</option></select>
-        </label>
-        <label>Salary<input id="f_salary" type="text"></label>
-        <label>Experience asked<input id="f_experience" type="text"></label>
-        <label>Sponsorship
-          <select id="f_sponsorship"><option>Sponsors</option><option>No sponsorship</option><option>Unknown</option></select>
-        </label>
-        <label>Seniority<input id="f_seniority" type="text"></label>
-        <label class="wide">Sponsorship note<input id="f_sponsorship_note" type="text"></label>
-        <label>Posted<input id="f_posted" type="text"></label>
-        <label>Applicants<input id="f_applicants" type="text"></label>
-        <label class="wide">Work auth lines quoted from the JD<textarea id="f_auth_lines" rows="3"></textarea></label>
-      </div>
-    </details>
-    <details class="section" id="detailsJd">
-      <summary>Job description <span class="muted" id="jdLen"></span></summary>
-      <textarea id="f_jd" rows="10"></textarea>
-    </details>
+    <div class="group">
+      <details class="disclosure" id="detailsFields">
+        <summary><span>Details</span><span class="muted">edit before you copy or log</span></summary>
+        <div class="grid">
+          <label>Company<input id="f_company" type="text"></label>
+          <label>Role<input id="f_role" type="text"></label>
+          <label class="wide">Job link<input id="f_link" type="text"></label>
+          <label>Source
+            <select id="f_source">
+              <option>LinkedIn</option><option>Company Site</option><option>Indeed</option><option>Handshake</option><option>Glassdoor</option><option>Sonic Jobs</option><option>Referral</option><option>Other</option>
+            </select>
+          </label>
+          <label>Location<input id="f_location" type="text"></label>
+          <label>Work mode
+            <select id="f_work_mode"><option>Remote</option><option>Hybrid</option><option>On-site</option><option>Unknown</option></select>
+          </label>
+          <label>Job type
+            <select id="f_job_type"><option>Full-time</option><option>Part-time</option><option>Contract</option><option>Internship</option><option>Co-op</option><option>Volunteer</option><option>Unknown</option></select>
+          </label>
+          <label>Salary<input id="f_salary" type="text"></label>
+          <label>Experience asked<input id="f_experience" type="text"></label>
+          <label>Sponsorship
+            <select id="f_sponsorship"><option>Sponsors</option><option>No sponsorship</option><option>Unknown</option></select>
+          </label>
+          <label>Seniority<input id="f_seniority" type="text"></label>
+          <label class="wide">Sponsorship note<input id="f_sponsorship_note" type="text"></label>
+          <label>Posted<input id="f_posted" type="text"></label>
+          <label>Applicants<input id="f_applicants" type="text"></label>
+          <label class="wide">Work auth lines quoted from the JD<textarea id="f_auth_lines" rows="3"></textarea></label>
+        </div>
+      </details>
+      <details class="disclosure" id="detailsJd">
+        <summary><span>Job description</span><span class="muted" id="jdLen"></span></summary>
+        <textarea id="f_jd" rows="12"></textarea>
+      </details>
+    </div>
     <div class="debug muted" id="debug"></div>
   </section>
 
@@ -103,33 +115,48 @@
   </section>
 
   <section class="panel" id="panel-settings">
+    <h3>Profile</h3>
+    <div class="group">
+      <button class="row-btn" id="openProfile">
+        <span>Name, links, education, experience, skills, EEO answers</span>
+        <span class="chev" aria-hidden="true"></span>
+      </button>
+    </div>
+    <p class="muted small">Claude scores every job against this profile.</p>
+
     <h3>Keys</h3>
-    <p class="muted small">Stored on this computer only. Never synced, never shown in logs.</p>
-    <label class="wide">Anthropic API key
-      <div class="row-inline"><input id="s_anthropicKey" type="password" placeholder="sk-ant-…" autocomplete="off"><button id="testClaude" class="quiet">Test</button></div>
-    </label>
-    <label class="wide">Notion integration token
-      <div class="row-inline"><input id="s_notionToken" type="password" placeholder="ntn_…" autocomplete="off"><button id="testNotion" class="quiet">Test</button></div>
-    </label>
-    <div class="grid">
-      <label>Notion data source id<input id="s_notionDataSourceId" type="text"></label>
-      <label>Notion database page id<input id="s_notionDatabaseId" type="text"></label>
+    <div class="group form">
+      <label class="field-row">Anthropic API key
+        <div class="row-inline"><input id="s_anthropicKey" type="password" placeholder="sk-ant-…" autocomplete="off"><button id="testClaude" class="quiet">Test</button></div>
+      </label>
+      <label class="field-row">Notion integration token
+        <div class="row-inline"><input id="s_notionToken" type="password" placeholder="ntn_…" autocomplete="off"><button id="testNotion" class="quiet">Test</button></div>
+      </label>
+      <label class="field-row">Notion data source id<input id="s_notionDataSourceId" type="text"></label>
+      <label class="field-row">Notion database page id<input id="s_notionDatabaseId" type="text"></label>
     </div>
     <div id="settingsMsg" class="settings-msg"></div>
+    <p class="muted small">Stored on this computer only. Never synced, never shown in logs.</p>
 
     <h3>Behaviour</h3>
-    <label class="toggle block"><input type="checkbox" id="s_autoLog"> Log to Notion when the score is at least <input type="number" id="s_autoLogMin" min="0" max="100" step="5" class="num">%</label>
-    <label class="toggle block"><input type="checkbox" id="s_autoCheck"> Run Check as soon as the popup opens</label>
-    <label class="toggle block">Weekly application goal <input type="number" id="s_weeklyGoal" min="1" max="200" class="num"></label>
+    <div class="group form">
+      <label class="field-row toggle-row"><span>Log to Notion when the score is at least <input type="number" id="s_autoLogMin" min="0" max="100" step="5" class="num">%</span>
+        <span class="switch"><input type="checkbox" id="s_autoLog"><span class="knob" aria-hidden="true"></span></span></label>
+      <label class="field-row toggle-row"><span>Run Check as soon as the popup opens</span>
+        <span class="switch"><input type="checkbox" id="s_autoCheck"><span class="knob" aria-hidden="true"></span></span></label>
+      <label class="field-row toggle-row"><span>Weekly application goal</span><input type="number" id="s_weeklyGoal" min="1" max="200" class="num"></label>
+    </div>
     <div class="actions"><button id="saveSettings" class="primary">Save settings</button></div>
     <p class="muted small">Model: claude-opus-5-5 at medium effort; Deep uses xhigh. Requests go only to api.anthropic.com and api.notion.com, 20 s timeout.</p>
 
     <h3>Copy template</h3>
-    <textarea id="template" rows="12" spellcheck="false"></textarea>
+    <div class="group form">
+      <textarea id="template" rows="12" spellcheck="false"></textarea>
+    </div>
     <p class="muted small">
       Placeholders: {{company}} {{role}} {{link}} {{source}} {{location}} {{work_mode}} {{job_type}} {{salary}}
       {{experience}} {{seniority}} {{sponsorship}} {{sponsorship_note}} {{auth_lines}} {{posted}} {{applicants}} {{deadline}} {{score}} {{keywords}} {{jd}} {{date}}.
-      "Facts" copies everything above the line that contains {{jd}}.
+      "Copy facts only" copies everything above the line that contains {{jd}}.
     </p>
     <div class="actions">
       <button id="saveTemplate" class="primary">Save template</button>
@@ -143,12 +170,11 @@
 
   <footer class="bar" id="bar">
     <button id="copyGrok" class="primary">Copy for Grok</button>
-    <button id="copyFacts">Facts</button>
-    <button id="copyJson">JSON</button>
+    <button id="logNotion">Log to Notion</button>
     <button id="save">Save</button>
   </footer>
 
-  <div id="toast" class="toast"></div>
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
   <script src="rules.js"></script>
   <script src="popup.js"></script>
 </body>

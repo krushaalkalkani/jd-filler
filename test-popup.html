@@ -2,9 +2,10 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>JD Filler - popup smoke test</title>
 <link rel="stylesheet" href="popup.css">
-<style>body { width: auto; max-height: none; } .harness { position: fixed; right: 8px; top: 8px; font: 11px monospace; background: #fef3c7; color: #78350f; padding: 4px 8px; border-radius: 6px; z-index: 9; }</style>
+<style>body { width: auto; max-height: none; padding-bottom: 0; } #root { width: 440px; min-height: 600px; margin: 0 auto; position: relative; background: var(--bg); } #root .top, #root .bar { position: sticky; } #root .bar { position: fixed; left: 50%; transform: translateX(-50%); width: 440px; right: auto; } #root .toast { bottom: 66px; } .harness { position: fixed; right: 8px; top: 8px; font: 11px monospace; background: #fef3c7; color: #78350f; padding: 4px 8px; border-radius: 6px; z-index: 9; }</style>
 </head>
 <body>
 <div class="harness">HARNESS: fake chrome.*, fake Claude + Notion</div>

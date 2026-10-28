@@ -49,18 +49,21 @@ Mapping: Greenhouse / Lever / Workday / Ashby / company sites -> "Company's care
 
 ## Profile page
 
-Open it from the **Profile** tab in the popup (or right-click the icon, Options). Every field autosaves to this computer and has a **Copy** button so you can paste into application forms. Sections: basics and address, links (LinkedIn, GitHub, X, portfolio, other), education, work experience, skills in three honesty levels (proven / listed only / never claim / no record), certifications, languages, targets, and the standard work-authorization and equal-employment answers. **Copy profile as text** gives one block for a chat bot; Export / Import JSON moves it between machines.
+Open it from **Settings → Profile** in the popup (or right-click the icon, Options). Every field autosaves to this computer and has a **Copy** button so you can paste into application forms. Sections: basics and address, links (LinkedIn, GitHub, X, portfolio, other), education, work experience, skills in three honesty levels (proven / listed only / never claim / no record), certifications, languages, targets, and the standard work-authorization and equal-employment answers. **Copy profile as text** gives one block for a chat bot; Export / Import JSON moves it between machines.
 
 Claude's system prompt is built from this page: positioning line, education, experience, targets, minimum pay and the skill levels. If the page has never been opened, a built-in copy of the same defaults is used.
 
-## Buttons (Job tab)
+## The Job tab
 
-- **Check** (or click the ring) - sends the page facts, the rule hits and the cleaned JD (max ~12k chars) to Claude and shows the card. The scoring rubric, your profile and evidence levels live in the system prompt in `background.js` (cached with `cache_control`). Strict JSON comes back through structured outputs (`output_config.format`). The card: line 1 score (coloured green 70+, amber 40 to 69, red under 40) / company / role / location / mode / pay / level, line 2 auth + quotes + `OPT day X/90`, then Fit (3 points tagged Strong / Partial / Gap), Lead with, Don't claim, Do now, red flags, and the model/time/token line.
-- **Deep** - toggle: Opus 5.5 at xhigh effort instead of medium. Slower, more careful. Remembered.
-- **Resume prompt** - copies a tailoring prompt for your resume tool: role, company, the ATS keywords Claude found (only ones you can truthfully use), what to lead with, what not to claim, the fit map and the JD.
-- **Links under the title** - H-1B history (search), alumni at the company from your school (LinkedIn people search), recruiters at the company, Glassdoor, E-Verify check.
-- **Log to Notion** - creates the tracker row. It first queries the data source for the same Job Link and shows "Already logged" instead of creating a duplicate. On success you get the page link and an **Undo** button (moves the page to trash). The job is also saved and marked Applied in the Saved tab. With the Settings option on (default), this runs by itself when the score is at least the threshold you set (default 70).
-- **Copy for Grok / Facts / JSON / Save** (bottom bar) and **Re-read** - as before. Re-read after you click a different job in a LinkedIn list. The template also has {{score}} and {{keywords}}.
+The popup follows the macOS grouped-list style: grey page, white cards, system blue for actions, green / amber / red only for the score. One primary button per state.
+
+- **Card at the top** - company and location, the role, and chips for mode, type, pay, years asked, posted and applicants. The ring on the right is the score; it is the one bold element and clicking it runs Check.
+- **Check fit** - the primary button. It sends the page facts, the rule hits and the cleaned JD (max ~12k chars) to Claude Opus 5.5 and fills the ring. The label becomes **Scoring…** and then **Check again**. The **Deep** switch next to it uses xhigh effort instead of medium (slower, more careful; remembered).
+- **The card under it** - first line is the score and the one-line reason, coloured by band (green 70+, amber 40 to 69, red under 40). Rows follow only when Claude had something to say: Role (level, type, years asked, pay), Auth (with the quoted sentence and `OPT day X of 90`), Fit (three points tagged strong / partial / gap), Lead with, Don't claim, Do now, Keywords (with Copy), Red flags. Anything "Not stated" is hidden.
+- **Rule callouts** - "Auto-skip" (red dot) and "Worth a second look" (amber dot) appear above the card with the sentence that triggered them.
+- **⋯ menu** - Read the page again (after you click a different job in a LinkedIn list), Copy resume prompt (a tailoring prompt: role, company, the ATS keywords you can truthfully use, lead-with, don't-claim, fit map and JD), Copy facts only, Copy as JSON, and the company links: H-1B history, alumni from your school, recruiters, Glassdoor, E-Verify.
+- **Details / Job description** - two disclosure rows. Open Details to edit any field before you copy or log.
+- **Bottom bar** - **Copy for Grok** (your template), **Log to Notion**, **Save** to the tracker. Log to Notion first queries the data source for the same Job Link and shows "Already logged" instead of creating a duplicate; on success you get the page link and an **Undo** button (moves the page to trash). With the Settings option on (default), logging runs by itself when the score is at least the threshold you set (default 70).
 
 ## Tracker tab
 

@@ -166,7 +166,6 @@ function renderHero(job) {
   if (job.experience && job.experience !== 'Not stated') chips.push(job.experience);
   if (job.posted) chips.push(job.posted);
   if (job.applicants) chips.push(job.applicants);
-  if (job.source) chips.push(job.source);
   const sp = job.sponsorship === 'Sponsors' ? ['Sponsors visa', 'apply'] : job.sponsorship === 'No sponsorship' ? ['No sponsorship', 'maybe'] : null;
   $('#h_chips').innerHTML = chips.map((c) => `<span class="chip">${esc(c)}</span>`).join('') + (sp ? `<span class="chip ${sp[1]}">${esc(sp[0])}</span>` : '');
   const co = (job.company || '').trim();
@@ -223,8 +222,8 @@ function runRules() {
   lastRules = window.JDRules ? window.JDRules.check(job) : { skip: [], maybe: [] };
   const item = (h) => `<b>${esc(h.rule)}</b><span class="q">"${esc(h.quote)}"</span>`;
   let html = '';
-  if (lastRules.skip.length) html += `<div class="banner skip"><b>Auto-skip</b>${lastRules.skip.map(item).join('')}</div>`;
-  if (lastRules.maybe.length) html += `<div class="banner maybe"><b>Worth a second look</b>${lastRules.maybe.map(item).join('')}</div>`;
+  if (lastRules.skip.length) html += `<div class="banner skip"><div class="body"><span class="head">Auto-skip</span>${lastRules.skip.map(item).join('')}</div></div>`;
+  if (lastRules.maybe.length) html += `<div class="banner maybe"><div class="body"><span class="head">Worth a second look</span>${lastRules.maybe.map(item).join('')}</div></div>`;
   $('#rules').innerHTML = html;
   return lastRules;
 }
@@ -236,7 +235,7 @@ function setRing(state, score) {
   const text = $('#ringText');
   ring.className = 'ring';
   if (state === 'busy') { ring.classList.add('busy'); text.textContent = '…'; fill.style.strokeDashoffset = 95; return; }
-  if (state === 'empty' || typeof score !== 'number') { ring.classList.add('empty'); text.textContent = 'Check'; fill.style.strokeDashoffset = 125.66; return; }
+  if (state === 'empty' || typeof score !== 'number') { ring.classList.add('empty'); text.textContent = 'Score'; fill.style.strokeDashoffset = 125.66; return; }
   const band = bandFor(score);
   ring.classList.add(band);
   text.textContent = `${score}%`;
@@ -244,23 +243,28 @@ function setRing(state, score) {
 }
 
 function verdictHtml(v, meta) {
-  const row = (k, html) => `<div class="row"><span class="k">${k}</span><span class="v">${html}</span></div>`;
+  const row = (k, html, cls) => (html ? `<div class="row${cls ? ' ' + cls : ''}"><span class="k">${k}</span><span class="v">${html}</span></div>` : '');
+  const said = (x) => { const t = (x == null ? '' : String(x)).trim(); return t && !/^(not stated|unknown|none|n\/a|-)$/i.test(t) ? t : ''; };
   const quotes = (v.auth && v.auth.quotes || []).filter(Boolean);
   const fit = (v.fit || []).slice(0, 3).map((f) => `<span class="tag ${esc(f.level)}">${esc(f.point)} · ${esc(f.level).toLowerCase()}</span>`).join('');
   const flags = (v.red_flags || []).filter(Boolean);
   const kws = (v.keywords || []).filter(Boolean);
   const band = v.verdict || bandFor(v.score || 0);
+  const roleBits = [said(v.level), said(v.job_type), said(v.years_asked) && `asks ${said(v.years_asked)}`, said(v.pay)].filter(Boolean).map(esc).join(' · ');
+  const authBits = [said(v.auth && v.auth.sponsorship) ? esc(v.auth.sponsorship) : '', quotes.length ? `<span class="muted">${quotes.map((q) => `"${esc(q)}"`).join('<br>')}</span>` : ''].filter(Boolean).join('<br>');
   return `<div class="verdict">
-    <div class="why"><b>${typeof v.score === 'number' ? v.score + '% · ' + bandWord[band] : esc(band)}.</b> ${esc(v.reason)}</div>
-    ${row('Role', `${esc(v.level)} · ${esc(v.job_type)} · years asked ${esc(v.years_asked)} · ${esc(v.pay)}`)}
-    ${row('Auth', `${esc(v.auth && v.auth.sponsorship)}${quotes.length ? '<br><span class="muted">' + quotes.map((q) => `"${esc(q)}"`).join('<br>') + '</span>' : ''}<br><span class="muted">OPT day ${optDay()}/${OPT_LIMIT}</span>`)}
-    ${row('Fit', `<span class="fit">${fit || '<span class="muted">none</span>'}</span>`)}
-    ${row('Lead with', esc(v.lead_with))}
-    ${row("Don't claim", esc(v.dont_claim))}
-    ${row('Do now', esc(v.do_now))}
-    ${kws.length ? row('Keywords', `<span class="kw">${kws.map((k) => `<span class="chip">${esc(k)}</span>`).join('')}<button id="copyKw" class="quiet" title="Copy keywords">copy</button></span>`) : ''}
-    ${flags.length ? row('Red flags', esc(flags.join('; '))) : ''}
+    <div class="lead ${esc(band)}"><b>${typeof v.score === 'number' ? v.score + '% · ' + bandWord[band] : esc(band)}.</b> ${esc(v.reason)}</div>
+    <div class="rows">
+    ${row('Role', roleBits)}
+    ${row('Auth', `${authBits || '<span class="muted">Not mentioned</span>'}<br><span class="muted">OPT day ${optDay()} of ${OPT_LIMIT}</span>`)}
+    ${row('Fit', fit ? `<span class="fit">${fit}</span>` : '')}
+    ${row('Lead with', esc(said(v.lead_with)))}
+    ${row("Don't claim", esc(said(v.dont_claim)))}
+    ${row('Do now', esc(said(v.do_now)))}
+    ${kws.length ? row('Keywords', `<span class="kw">${kws.map((k) => `<span class="chip">${esc(k)}</span>`).join('')}<button id="copyKw" class="quiet" title="Copy keywords">Copy</button></span>`) : ''}
+    ${flags.length ? row('Red flags', esc(flags.join('; ')), 'flag') : ''}
     <div class="meta">${esc(meta.model)} · ${(meta.ms / 1000).toFixed(1)}s · ${meta.input} in / ${meta.output} out${meta.cache_read ? ' · cache hit' : meta.cache_write ? ' · cache written' : ''}</div>
+    </div>
   </div>`;
 }
 
@@ -275,9 +279,9 @@ async function doCheck() {
   const settings = await store.getSettings();
   const deep = $('#deep').checked;
   const box = $('#verdict');
-  box.innerHTML = `<div class="verdict muted">Scoring with Opus 5.5${deep ? ' at xhigh effort' : ''}…</div>`;
+  box.innerHTML = `<div class="verdict busy">Scoring with Opus 5.5${deep ? ' at xhigh effort' : ''}…</div>`;
   setRing('busy');
-  $('#check').disabled = true;
+  $('#check').disabled = true; $('#check').textContent = 'Scoring…';
   try {
     const res = await send({ type: 'claude.verdict', job: stripForApi(job), rules, deep });
     if (!res || !res.ok) throw Object.assign(new Error((res && res.error) || 'No response from background'), { retryable: res && res.retryable });
@@ -296,6 +300,7 @@ async function doCheck() {
     $('#retryCheck').addEventListener('click', doCheck);
   } finally {
     $('#check').disabled = false;
+    $('#check').textContent = lastVerdict ? 'Check again' : 'Check fit';
   }
 }
 
@@ -536,6 +541,12 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   $('#check').addEventListener('click', doCheck);
   $('#ringBtn').addEventListener('click', doCheck);
+  const menu = $('#moreMenu'); const moreBtn = $('#moreBtn');
+  const showMenu = (on) => { menu.hidden = !on; moreBtn.setAttribute('aria-expanded', String(on)); };
+  moreBtn.addEventListener('click', (e) => { e.stopPropagation(); showMenu(menu.hidden); });
+  menu.addEventListener('click', (e) => { if (e.target.closest('button, a')) showMenu(false); });
+  document.addEventListener('click', (e) => { if (!e.target.closest('.menu-wrap')) showMenu(false); });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') showMenu(false); });
   $('#deep').addEventListener('change', () => store.setSettings({ deep: $('#deep').checked }));
   $('#logNotion').addEventListener('click', () => logToNotion(false));
   $('#copyResume').addEventListener('click', () => copy(resumePrompt(read()), 'Resume prompt copied'));
