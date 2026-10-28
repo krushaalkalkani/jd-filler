@@ -231,8 +231,10 @@
   }
 
   // ---------- site extractors ----------
-  // Text that comes from LinkedIn chrome, not the job. Never accept it as a role or company.
-  const LI_JUNK = /low match|top applicant|premium|match details|see how you compare|people you can reach|company insights|job search|jobs you may|similar jobs|skip to/i;
+  // Text from LinkedIn chrome or from widgets other extensions inject into the page
+  // (Jobright "Partial Match, Let's Make it Perfect", Tsenta, Simplify, Premium cards).
+  // Never accept it as a role or company.
+  const LI_JUNK = /low match|partial match|strong match|good match|fair match|weak match|top applicant|premium|match details|make it perfect|make it unmissable|keywords are present|keywords match|assess how you fit|how you compare|your job match|people you can reach|company insights|job search|jobs you may|similar jobs|skip to|set alert|about the job/i;
   const liOk = (v) => (v && !LI_JUNK.test(v) ? v : '');
 
   // Parse "(3) Role | Company | LinkedIn" or "Role at Company — Loc | LinkedIn Jobs".
@@ -244,6 +246,90 @@
     const m = t.match(/^(.+?)\s+at\s+(.+?)(?:\s+[—–-]\s+(.+?))?\s*(?:\|\s*LinkedIn.*)?$/i);
     if (m) { out.role = m[1]; out.company = m[2]; if (m[3]) out.location = m[3]; }
     return out;
+  }
+
+  // "Sunnyvale, CA · 4 days ago · Over 100 people clicked apply" -> location / posted / applicants.
+  function parseLinkedinPrim(prim, r) {
+    if (!prim) return;
+    const pm = prim.match(/(?:(?:re)?posted\s+)?\d+\s*(?:minutes?|hours?|days?|weeks?|months?)\s+ago/i);
+    if (pm && !r.posted) r.posted = clean(pm[0]);
+    const am = prim.match(/(?:over\s+|fewer than\s+)?\d+\+?\s*(?:applicants?|people clicked apply)|be an early applicant|be among the first \d+ applicants/i);
+    if (am && !r.applicants) r.applicants = clean(am[0]);
+    if (!r.location) {
+      const parts = prim.split(/\s*[·•|]\s*/).map(clean).filter(Boolean)
+        .filter((p) => p.toLowerCase() !== (r.company || '').toLowerCase())
+        .filter((p) => !/\bago\b|^(?:re)?posted|applicant|people clicked apply|easy apply|promoted|viewed|actively|matches your|see who|responses managed/i.test(p) && !/^\d+$/.test(p));
+      if (parts.length) r.location = parts[0];
+    }
+  }
+
+  const LI_PILL = /^(?:on-?site|remote|hybrid|full-?time|part-?time|internship|contract|temporary|volunteer|entry level|associate|mid-senior level|director|executive|(?:\$|USD)\s?[\d,.]+[kK]?(?:\s*\/\s*(?:yr|hr|year|hour|month))?(?:\s*(?:-|–|to)\s*(?:\$|USD)?\s?[\d,.]+[kK]?(?:\s*\/\s*(?:yr|hr|year|hour|month))?)?)$/i;
+
+  // LinkedIn's 2025 job page (and the new AI job search) ships only hashed class names, so the
+  // class-based reader finds nothing. Read it by structure instead: the tab title, the biggest
+  // short text in the pane, the line with "N days ago", chip-sized text, and the "About the job" heading.
+  function linkedinNew(pane) {
+    const r = {};
+    const isJunk = (t) => !t || LI_JUNK.test(t);
+    const leafish = (el) => el.children.length <= 2;
+    const pageText = pane.innerText || '';
+    const fb = linkedinTitleFallback();
+    const textEls = qa('h1, h2, h3, p, span, div, a', pane);
+
+    let titleEl = null;
+    if (fb.role && !isJunk(fb.role) && pageText.includes(fb.role)) {
+      r.role = fb.role;
+      // The job list repeats the title in small type; the detail pane sets it big.
+      const fs = (el) => parseFloat(getComputedStyle(el).fontSize) || 0;
+      titleEl = textEls.filter((el) => leafish(el) && clean(el.innerText) === fb.role).sort((a, b) => fs(b) - fs(a))[0] || null;
+    }
+    if (!r.role) {
+      let best = null; let bestFs = 0;
+      for (const el of textEls) {
+        if (!leafish(el)) continue;
+        const t = clean(el.innerText);
+        if (!t || t.length < 4 || t.length > 120 || /^\d/.test(t) || isJunk(t)) continue;
+        const fs = parseFloat(getComputedStyle(el).fontSize) || 0;
+        if (fs >= 18 && fs > bestFs) { bestFs = fs; best = el; }
+      }
+      if (best) { r.role = clean(best.innerText); titleEl = best; }
+    }
+    const follows = (el) => !titleEl || !!(titleEl.compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING);
+    const precedes = (el) => !titleEl || !!(titleEl.compareDocumentPosition(el) & Node.DOCUMENT_POSITION_PRECEDING);
+
+    if (fb.company && !isJunk(fb.company) && pageText.includes(fb.company)) r.company = fb.company;
+    if (!r.company) {
+      const links = qa('a[href*="/company/"]', pane).filter((a) => { const t = clean(a.innerText); return t && t.length < 80 && !isJunk(t); });
+      const near = links.filter(precedes).pop() || links.find(follows) || links[0];
+      if (near) r.company = clean(near.innerText);
+    }
+
+    // "N days ago" sits in its own span; climb to the line that also holds the location and applicant count.
+    let primEl = qa('p, div, span', pane).find((el) => el.children.length <= 6 && follows(el)
+      && /\d+\s*(?:minutes?|hours?|days?|weeks?|months?)\s+ago/i.test(el.innerText || '') && (el.innerText || '').length < 220);
+    while (primEl && primEl.parentElement && primEl.parentElement !== pane
+      && !(titleEl && primEl.parentElement.contains(titleEl)) && (primEl.parentElement.innerText || '').length < 220) primEl = primEl.parentElement;
+    if (primEl) {
+      const line = (primEl.innerText || '').split('\n').map(clean).find((l) => /\bago\b/i.test(l)) || clean(primEl.innerText);
+      parseLinkedinPrim(line, r);
+    }
+
+    const aboutH = qa('h1, h2, h3, h4', pane).find((h) => /^about the job$/i.test(clean(h.innerText)) && follows(h));
+    const beforeAbout = (el) => !aboutH || !!(aboutH.compareDocumentPosition(el) & Node.DOCUMENT_POSITION_PRECEDING);
+    const pills = [];
+    for (const el of qa('a, button, span, li, div', pane)) {
+      if (!leafish(el) || !follows(el) || !beforeAbout(el)) continue;
+      const t = clean(el.innerText);
+      if (t && LI_PILL.test(t) && !pills.includes(t)) pills.push(t);
+    }
+    r._pills = pills;
+
+    if (aboutH) {
+      let c = aboutH; let i = 0;
+      while (c.parentElement && c.parentElement !== pane && (c.innerText || '').length < 800 && i < 8) { c = c.parentElement; i++; }
+      r.jd = block(c);
+    }
+    return r;
   }
 
   function linkedin() {
@@ -261,75 +347,75 @@
       '.job-details-jobs-unified-top-card__container--two-pane', '.jobs-unified-top-card',
       '[class*="job-details-jobs-unified-top-card"]', '[class*="jobs-unified-top-card"]',
       '.top-card-layout__card', '.topcard', '[class*="top-card"]'
-    ], pane) || pane;
+    ], pane);
     const notJunk = (el) => !el.closest('[class*="premium"], [class*="how-you-match"], [class*="insight-card"], [class*="people-you"], footer, nav');
 
-    r.role = liOk(firstTxt([
-      '.job-details-jobs-unified-top-card__job-title h1', '.job-details-jobs-unified-top-card__job-title',
-      '.jobs-unified-top-card__job-title h1', '.jobs-unified-top-card__job-title',
-      'h1.top-card-layout__title', '.topcard__title', '.jobs-details-top-card__job-title', '[class*="job-title"] h1', '[class*="job-title"]', 'h1'
-    ], top)) || liOk(firstTxt(['[class*="top-card"] h1', 'h1'], pane));
-    r.company = liOk(firstTxt([
-      '.job-details-jobs-unified-top-card__company-name a', '.job-details-jobs-unified-top-card__company-name',
-      '.jobs-unified-top-card__company-name a', '.jobs-unified-top-card__company-name',
-      '[class*="company-name"]', 'a.topcard__org-name-link', '.topcard__org-name-link',
-      '.top-card-layout__second-subline a[href*="/company/"]', 'a[href*="/company/"]'
-    ], top));
+    if (top) {
+      // Classic layout with named classes. No bare h1 fallback: injected widgets own h1s too.
+      r.role = liOk(firstTxt([
+        '.job-details-jobs-unified-top-card__job-title h1', '.job-details-jobs-unified-top-card__job-title',
+        '.jobs-unified-top-card__job-title h1', '.jobs-unified-top-card__job-title',
+        'h1.top-card-layout__title', '.topcard__title', '.jobs-details-top-card__job-title', '[class*="job-title"] h1', '[class*="job-title"]', 'h1.t-24'
+      ], top));
+      r.company = liOk(firstTxt([
+        '.job-details-jobs-unified-top-card__company-name a', '.job-details-jobs-unified-top-card__company-name',
+        '.jobs-unified-top-card__company-name a', '.jobs-unified-top-card__company-name',
+        '[class*="company-name"]', 'a.topcard__org-name-link', '.topcard__org-name-link',
+        '.top-card-layout__second-subline a[href*="/company/"]', 'a[href*="/company/"]'
+      ], top));
 
-    const prim = firstTxt([
-      '.job-details-jobs-unified-top-card__tertiary-description-container', '.job-details-jobs-unified-top-card__primary-description-container',
-      '.jobs-unified-top-card__primary-description', '.jobs-unified-top-card__subtitle-primary-grouping',
-      '[class*="tertiary-description"]', '[class*="primary-description"]',
-      '.top-card-layout__second-subline', '.topcard__flavor-row'
-    ], top);
-    if (prim) {
-      const pm = prim.match(/(?:(?:re)?posted\s+)?\d+\s*(?:minutes?|hours?|days?|weeks?|months?)\s+ago/i);
-      if (pm) r.posted = clean(pm[0]);
-      const am = prim.match(/(?:over\s+|fewer than\s+)?\d+\+?\s*(?:applicants?|people clicked apply)|be an early applicant|be among the first \d+ applicants/i);
-      if (am) r.applicants = clean(am[0]);
-    }
-    r.posted = r.posted || firstTxt(['.posted-time-ago__text', '[class*="posted-date"]'], top);
-    r.applicants = r.applicants || firstTxt(['.num-applicants__caption', '[class*="applicant-count"]'], top);
-    r.location = firstTxt(['.topcard__flavor--bullet', '.job-details-jobs-unified-top-card__bullet', '.jobs-unified-top-card__bullet', '[class*="__bullet"]'], top);
-    if (!r.location && prim) {
-      const parts = prim.split(/\s*[·•|]\s*/).map(clean).filter(Boolean)
-        .filter((p) => p.toLowerCase() !== (r.company || '').toLowerCase())
-        .filter((p) => !/\bago\b|^(?:re)?posted|applicant|people clicked apply|easy apply|promoted|viewed|actively|matches your|see who/i.test(p) && !/^\d+$/.test(p));
-      if (parts.length) r.location = parts[0];
+      const prim = firstTxt([
+        '.job-details-jobs-unified-top-card__tertiary-description-container', '.job-details-jobs-unified-top-card__primary-description-container',
+        '.jobs-unified-top-card__primary-description', '.jobs-unified-top-card__subtitle-primary-grouping',
+        '[class*="tertiary-description"]', '[class*="primary-description"]',
+        '.top-card-layout__second-subline', '.topcard__flavor-row'
+      ], top);
+      r.location = firstTxt(['.topcard__flavor--bullet', '.job-details-jobs-unified-top-card__bullet', '.jobs-unified-top-card__bullet', '[class*="__bullet"]'], top);
+      parseLinkedinPrim(prim, r);
+      r.posted = r.posted || firstTxt(['.posted-time-ago__text', '[class*="posted-date"]'], top);
+      r.applicants = r.applicants || firstTxt(['.num-applicants__caption', '[class*="applicant-count"]'], top);
+
+      // Pills under the top card: "Remote", "Hybrid", "Full-time", "$120K/yr - $150K/yr", "Mid-Senior level".
+      r._pills = qa([
+        '.job-details-preferences-and-skills__pill', '.job-details-fit-level-preferences button',
+        '.jobs-unified-top-card__job-insight span', '.job-details-jobs-unified-top-card__job-insight span',
+        '.job-details-jobs-unified-top-card__job-insight-view-model-secondary', 'li.job-details-jobs-unified-top-card__job-insight',
+        '[class*="job-insight"]', '[class*="workplace-type"]', '[class*="__pill"]'
+      ].join(', '), pane).filter(notJunk).map((e) => clean(e.innerText || e.textContent)).filter((t) => t && t.length < 160);
+      for (const li of qa('.description__job-criteria-item', pane)) {
+        const h = txt('.description__job-criteria-subheader', li).toLowerCase();
+        const v = txt('.description__job-criteria-text', li);
+        if (/seniority/.test(h) && !/not applicable/i.test(v)) r.seniority = r.seniority || v;
+        if (/employment/.test(h)) r.job_type = r.job_type || mapJobType(v);
+      }
+      // The "About the job" block only.
+      const descEl = firstEl([
+        '#job-details', '.jobs-description__content', '.jobs-description-content__text', '.jobs-box__html-content',
+        '.jobs-description', '.show-more-less-html__markup', '.description__text', '[class*="description__text"]'
+      ], pane);
+      r.jd = block(descEl);
     }
 
-    // Pills under the top card: "Remote", "Hybrid", "Full-time", "$120K/yr - $150K/yr", "Mid-Senior level".
-    const pills = qa([
-      '.job-details-preferences-and-skills__pill', '.job-details-fit-level-preferences button',
-      '.jobs-unified-top-card__job-insight span', '.job-details-jobs-unified-top-card__job-insight span',
-      '.job-details-jobs-unified-top-card__job-insight-view-model-secondary', 'li.job-details-jobs-unified-top-card__job-insight',
-      '[class*="job-insight"]', '[class*="workplace-type"]', '[class*="__pill"]'
-    ].join(', '), pane).filter(notJunk).map((e) => clean(e.innerText || e.textContent)).filter((t) => t && t.length < 160);
-    r._pills = pills;
-    for (const p of pills) {
+    if (!r.role || !r.jd) {
+      // New hashed-class layout (or the classic one failed): fill whatever is still missing.
+      let fresh = {};
+      try { fresh = linkedinNew(q('main') || pane); } catch (e) { r._err = String(e); }
+      for (const k of Object.keys(fresh)) if (!r[k] || (Array.isArray(r[k]) && !r[k].length)) r[k] = fresh[k];
+    }
+
+    for (const p of r._pills || []) {
       const wm = detectWorkMode(p, true); if (wm && !r.work_mode) r.work_mode = wm;
       const jt = mapJobType(p); if (jt && !r.job_type) r.job_type = jt;
       const sal = findSalary(p); if (sal && !r.salary) r.salary = sal;
       const sen = p.match(/\b(internship|entry level|associate|mid-senior level|director|executive)\b/i); if (sen && !r.seniority) r.seniority = sen[1];
     }
-    for (const li of qa('.description__job-criteria-item', pane)) {
-      const h = txt('.description__job-criteria-subheader', li).toLowerCase();
-      const v = txt('.description__job-criteria-text', li);
-      if (/seniority/.test(h) && !/not applicable/i.test(v)) r.seniority = r.seniority || v;
-      if (/employment/.test(h)) r.job_type = r.job_type || mapJobType(v);
-    }
-
-    // The "About the job" block only.
-    const descEl = firstEl([
-      '#job-details', '.jobs-description__content', '.jobs-description-content__text', '.jobs-box__html-content',
-      '.jobs-description', '.show-more-less-html__markup', '.description__text', '[class*="description__text"]'
-    ], pane);
-    r.jd = block(descEl);
+    r.role = liOk(r.role);
+    r.company = liOk(r.company);
     if (r.jd) {
       r.jd = r.jd
         .replace(/^About the job\s*/i, '')
         .replace(/\s*(?:Show more|Show less|…\s*more|\.\.\.\s*more|see more|see less)\s*$/i, '')
-        .replace(/\n\s*(?:Show more|Show less|…\s*more)\s*(?=\n|$)/gi, '')
+        .replace(/\n\s*(?:Show more|Show less|…\s*more|\.\.\.\s*more)\s*(?=\n|$)/gi, '')
         .trim();
     }
     return r;

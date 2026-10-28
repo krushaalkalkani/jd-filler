@@ -84,11 +84,15 @@ Each hit shows the exact sentence. Edit the JD or Salary field and the banner re
 
 Bad key (401), rate limit (429), server errors and network timeouts (20 s) show as a message with a **Retry** button. Nothing is sent anywhere except `api.anthropic.com` and `api.notion.com`.
 
+After a `git pull`, Chrome keeps running the old background service worker until you press the reload arrow on the JD Filler card at `chrome://extensions`. The popup notices the version mismatch and shows "Extension files changed: reload it" so a stale worker is not mistaken for a bug.
+
 ## Supported sites
 
 Site readers: LinkedIn (logged in, search / collections / view pages, and the guest view), Indeed, Glassdoor, Handshake, Greenhouse, Lever, Workday, Ashby, SmartRecruiters, Sonic Jobs (source only). Everything else: JSON-LD `JobPosting` plus a generic fallback. The grey line under the form says which reader ran.
 
 On LinkedIn every read is scoped to the selected job's detail pane (top card + "About the job"). The job list, Premium "match" widgets, "People you can reach out to", company insights and the footer are ignored, and a role that looks like LinkedIn chrome ("Low match to this role", "Top applicant", ...) is thrown away in favour of the tab title.
+
+LinkedIn now ships two layouts. The classic one (named classes such as `job-details-jobs-unified-top-card__job-title`) is read by class. The 2025 one (standalone `/jobs/view/` pages and the new AI job search at `/jobs/search-results/`) has only hashed class names, so it is read by structure: the tab title ("Role | Company | LinkedIn"), the biggest short text in the pane, the "City · N days ago · N applicants" line, chip-sized text for work mode / job type / pay, and the "About the job" heading for the description. Widgets that other extensions inject into the page (Jobright's "Partial Match, Let's Make it Perfect" card, Tsenta, Simplify) are never accepted as the role or company.
 
 ## Testing the extractor
 
@@ -100,7 +104,7 @@ python3 -m http.server 8766
 
 Then open http://localhost:8766/test-extract.html (opening the file directly also works in Chrome).
 
-Fixtures: real captures of a Greenhouse page, a LinkedIn guest job view, a Workday page and a Lever page, plus `linkedin-search-mock` - a hand-built copy of the logged-in search layout that reproduced the HNTB bug (other card's salary, Premium widget, footer). To add a real page: open it, Settings -> **Save page as fixture**, move the downloaded `*.fixture.js` into `fixtures/`, fill its `expect` values, and add a `<script>` line in `test-extract.html`.
+Fixtures: real captures of a Greenhouse page, a LinkedIn guest job view, a Workday page and a Lever page, plus three hand-built LinkedIn pages: `linkedin-search-mock` (classic search layout with the HNTB bug: other card's salary, Premium widget, footer), `linkedin-ai-search-new-layout` (2025 AI search with hashed classes and a Jobright widget) and `linkedin-view-new-layout` (2025 standalone job page). To add a real page: open it, Settings -> **Save page as fixture**, move the downloaded `*.fixture.js` into `fixtures/`, fill its `expect` values, and add a `<script>` line in `test-extract.html`.
 
 ## Files
 

@@ -26,7 +26,23 @@ const DEFAULT_TEMPLATE = [
 const DEFAULT_SETTINGS = { anthropicKey: '', notionToken: '', notionDataSourceId: '42d52ecb-1841-82ad-939d-87b508593635', notionDatabaseId: '54352ecb18418259b0fc817076dabcbc', autoLog: true, autoLogMin: 70, autoCheck: false, deep: false, weeklyGoal: 20 };
 const bandFor = (score) => (score >= 70 ? 'APPLY' : score >= 40 ? 'MAYBE' : 'SKIP');
 const bandWord = { APPLY: 'apply', MAYBE: 'maybe', SKIP: 'skip' };
+// A verdict saved by an older build has a band but no score; map it so the ring and badges still render.
+function normalizeVerdict(v) {
+  if (!v) return v;
+  if (typeof v.score !== 'number' || Number.isNaN(v.score)) {
+    const n = Number(v.score);
+    v.score = Number.isFinite(n) && String(v.score).trim() !== '' ? Math.max(0, Math.min(100, Math.round(n))) : ({ APPLY: 80, MAYBE: 55, SKIP: 15 }[v.verdict] ?? 0);
+  }
+  v.verdict = bandFor(v.score);
+  return v;
+}
 const scoreLabel = (v) => (v && typeof v.score === 'number' ? `${v.score}%` : (v && v.verdict) || '');
+// The background service worker keeps running the old code after a `git pull` until the extension is reloaded.
+function warnIfStale(res) {
+  const mine = chrome.runtime.getManifest().version;
+  if (res && res.version && res.version !== mine) toast(`Extension files changed: reload it at chrome://extensions`, 6000);
+  else if (res && res.ok && !res.version) toast('Extension files changed: reload it at chrome://extensions', 6000);
+}
 
 let current = null;    // last extracted/edited job
 let lastRules = null;
@@ -35,12 +51,12 @@ let notionPage = null; // {id,url} for the current job
 let stageFilter = 'All';
 
 // ---------- small utils ----------
-function toast(msg) {
+function toast(msg, ms) {
   const t = $('#toast');
   t.textContent = msg;
   t.classList.add('show');
   clearTimeout(toast._t);
-  toast._t = setTimeout(() => t.classList.remove('show'), 1600);
+  toast._t = setTimeout(() => t.classList.remove('show'), ms || 1600);
 }
 function setStatus(msg) { $('#status').textContent = msg; }
 function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
@@ -265,6 +281,8 @@ async function doCheck() {
   try {
     const res = await send({ type: 'claude.verdict', job: stripForApi(job), rules, deep });
     if (!res || !res.ok) throw Object.assign(new Error((res && res.error) || 'No response from background'), { retryable: res && res.retryable });
+    warnIfStale(res);
+    normalizeVerdict(res.verdict);
     lastVerdict = res.verdict;
     current = Object.assign(current || {}, { verdict: res.verdict, verdict_meta: res.meta });
     box.innerHTML = verdictHtml(res.verdict, res.meta);
@@ -389,7 +407,7 @@ async function renderSaved() {
   if (!shown.length) { list.innerHTML = `<div class="empty">No jobs in ${esc(stageFilter)}.</div>`; return; }
   list.innerHTML = shown.map(({ j, i }) => `
     <div class="item" data-i="${i}">
-      <div class="head"><span class="name">${esc(j.role || '(no title)')} ${j.verdict ? `<span class="badge ${esc(j.verdict.verdict || bandFor(j.verdict.score || 0))}">${esc(scoreLabel(j.verdict))}</span>` : ''}</span><span class="muted small">${esc((j.applied_on || j.saved_at || '').slice(0, 10))}</span></div>
+      <div class="head"><span class="name">${esc(j.role || '(no title)')} ${j.verdict ? `<span class="badge ${esc(normalizeVerdict(j.verdict).verdict)}">${esc(scoreLabel(j.verdict))}</span>` : ''}</span><span class="muted small">${esc((j.applied_on || j.saved_at || '').slice(0, 10))}</span></div>
       <div class="sub">${esc([j.company, j.location, j.work_mode, j.source].filter(Boolean).join(' · '))}${j.notion_url ? ` · <a href="${esc(j.notion_url)}" target="_blank" rel="noopener">Notion</a>` : ''}</div>
       <div class="controls">
         <select data-act="stage" title="Stage">${STAGES.map((st) => `<option ${((j.stage || 'Saved') === st) ? 'selected' : ''}>${st}</option>`).join('')}</select>

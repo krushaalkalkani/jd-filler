@@ -323,7 +323,8 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   };
   const h = handlers[msg && msg.type];
   if (!h) { sendResponse({ ok: false, error: 'Unknown message' }); return false; }
-  h().then((r) => sendResponse(Object.assign({ ok: true }, r)))
+  const version = chrome.runtime.getManifest().version;
+  h().then((r) => sendResponse(Object.assign({ ok: true, version }, r)))
     .catch((e) => sendResponse({ ok: false, error: e.message || String(e), code: e.code || 'error', retryable: !!e.retryable }));
   return true; // async
 });
