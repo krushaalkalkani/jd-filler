@@ -1,9 +1,14 @@
 {
   "manifest_version": 3,
   "name": "JD Filler",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Grab company, role, link, location, work mode, job type, salary, source and sponsorship from any job posting and copy it in one click.",
-  "permissions": ["activeTab", "scripting", "storage", "clipboardWrite"],
+  "permissions": [
+    "activeTab",
+    "scripting",
+    "storage",
+    "clipboardWrite"
+  ],
   "action": {
     "default_popup": "popup.html",
     "default_title": "JD Filler - copy this job",
@@ -22,8 +27,18 @@
   },
   "commands": {
     "_execute_action": {
-      "suggested_key": { "default": "Ctrl+Shift+J", "mac": "Command+Shift+J" },
+      "suggested_key": {
+        "default": "Ctrl+Shift+J",
+        "mac": "Command+Shift+J"
+      },
       "description": "Open JD Filler on the current job page"
     }
-  }
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "host_permissions": [
+    "https://api.anthropic.com/*",
+    "https://api.notion.com/*"
+  ]
 }

@@ -13,6 +13,7 @@
         <div class="title">JD Filler</div>
         <div class="status" id="status">Reading page…</div>
       </div>
+      <div class="opt" id="optDay" title="OPT unemployment clock. Day 1 = Sept 12, 2026. Limit 90 days."></div>
     </div>
     <nav class="tabs">
       <button class="tab active" data-tab="job">Job</button>
@@ -23,12 +24,19 @@
 
   <section class="panel active" id="panel-job">
     <div class="actions">
-      <button id="copyGrok" class="primary" title="Copy facts + full JD in the template format">Copy for Grok</button>
+      <button id="check" class="primary" title="Ask Claude for a verdict on this job">Check</button>
+      <label class="toggle" title="Deep = Sonnet (slower, better). Off = Haiku (fast)."><input type="checkbox" id="deep"> Deep</label>
+      <button id="logNotion" title="Create a row in the Notion Application Tracker">Log to Notion</button>
+      <button id="copyGrok" title="Copy facts + full JD in the template format">Copy for Grok</button>
       <button id="copyFacts" title="Copy only the quick facts">Facts only</button>
       <button id="copyJson" title="Copy as JSON">JSON</button>
       <button id="save" title="Keep this job in the Saved list">Save</button>
       <button id="reextract" title="Read the page again">Re-read</button>
     </div>
+
+    <div id="rules"></div>
+    <div id="verdict"></div>
+    <div id="notion" class="notion"></div>
 
     <div class="grid">
       <label>Company<input id="f_company" type="text"></label>
@@ -36,7 +44,7 @@
       <label class="wide">Job link<input id="f_link" type="text"></label>
       <label>Source
         <select id="f_source">
-          <option>LinkedIn</option><option>Company Site</option><option>Indeed</option><option>Handshake</option><option>Glassdoor</option><option>Referral</option><option>Other</option>
+          <option>LinkedIn</option><option>Company Site</option><option>Indeed</option><option>Handshake</option><option>Glassdoor</option><option>Sonic Jobs</option><option>Referral</option><option>Other</option>
         </select>
       </label>
       <label>Location<input id="f_location" type="text"></label>
@@ -44,7 +52,7 @@
         <select id="f_work_mode"><option>Remote</option><option>Hybrid</option><option>On-site</option><option>Unknown</option></select>
       </label>
       <label>Job type
-        <select id="f_job_type"><option>Full-time</option><option>Part-time</option><option>Contract</option><option>Internship</option><option>Co-op</option><option>Unknown</option></select>
+        <select id="f_job_type"><option>Full-time</option><option>Part-time</option><option>Contract</option><option>Internship</option><option>Co-op</option><option>Volunteer</option><option>Unknown</option></select>
       </label>
       <label>Salary<input id="f_salary" type="text"></label>
       <label>Experience asked<input id="f_experience" type="text"></label>
@@ -70,8 +78,25 @@
   </section>
 
   <section class="panel" id="panel-settings">
-    <label class="wide">Copy template
-      <textarea id="template" rows="16" spellcheck="false"></textarea>
+    <h3>Keys (stored locally, never synced)</h3>
+    <label class="wide">Anthropic API key
+      <div class="row-inline"><input id="s_anthropicKey" type="password" placeholder="sk-ant-…" autocomplete="off"><button id="testClaude">Test</button></div>
+    </label>
+    <label class="wide">Notion internal integration token
+      <div class="row-inline"><input id="s_notionToken" type="password" placeholder="ntn_…" autocomplete="off"><button id="testNotion">Test</button></div>
+    </label>
+    <div class="grid">
+      <label>Notion data source id<input id="s_notionDataSourceId" type="text"></label>
+      <label>Notion database page id<input id="s_notionDatabaseId" type="text"></label>
+    </div>
+    <label class="toggle block"><input type="checkbox" id="s_autoLog"> Log to Notion automatically when the verdict is APPLY</label>
+    <label class="toggle block"><input type="checkbox" id="s_autoCheck"> Run Check automatically when the popup opens</label>
+    <div class="actions"><button id="saveSettings" class="primary">Save settings</button><span id="settingsMsg" class="muted"></span></div>
+    <div class="muted small">Models: fast = claude-haiku-5-5, Deep = claude-sonnet-5-5. Requests go only to api.anthropic.com and api.notion.com, with a 20 s timeout.</div>
+
+    <h3>Copy template</h3>
+    <label class="wide">
+      <textarea id="template" rows="12" spellcheck="false"></textarea>
     </label>
     <div class="muted small">
       Placeholders: {{company}} {{role}} {{link}} {{source}} {{location}} {{work_mode}} {{job_type}} {{salary}}
@@ -82,10 +107,14 @@
       <button id="saveTemplate" class="primary">Save template</button>
       <button id="resetTemplate">Reset to default</button>
     </div>
+
+    <h3>Debug</h3>
+    <div class="actions"><button id="saveFixture">Save page as fixture</button><span class="muted small">Downloads the current page's HTML as a fixtures/*.fixture.js file for test-extract.html.</span></div>
     <div class="muted small">Shortcut: Cmd+Shift+J (Mac) / Ctrl+Shift+J opens this popup. Change it at chrome://extensions/shortcuts.</div>
   </section>
 
   <div id="toast" class="toast"></div>
+  <script src="rules.js"></script>
   <script src="popup.js"></script>
 </body>
 </html>

@@ -44,3 +44,40 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--a
 .empty { color: var(--muted); text-align: center; padding: 20px 0; }
 .toast { position: fixed; left: 50%; bottom: 12px; transform: translateX(-50%) translateY(20px); background: var(--fg); color: var(--bg); padding: 6px 12px; border-radius: 6px; opacity: 0; transition: all .15s; pointer-events: none; font-size: 12px; }
 .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+/* --- v1.1: rules banner, verdict card, notion, settings --- */
+h3 { font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin: 14px 0 6px; }
+.opt { margin-left: auto; font-size: 11px; color: var(--muted); white-space: nowrap; }
+.toggle { flex-direction: row; align-items: center; gap: 5px; font-size: 12px; color: var(--fg); cursor: pointer; }
+.toggle input { width: auto; margin: 0; }
+.toggle.block { margin: 6px 0; }
+.row-inline { display: flex; gap: 6px; }
+.row-inline input { flex: 1; }
+.banner { border-radius: 8px; padding: 7px 10px; margin-bottom: 8px; font-size: 12px; }
+.banner.skip { background: #fee2e2; color: #7f1d1d; border: 1px solid #fca5a5; }
+.banner.maybe { background: #fef3c7; color: #78350f; border: 1px solid #fcd34d; }
+.banner.ok { background: #dcfce7; color: #14532d; border: 1px solid #86efac; }
+@media (prefers-color-scheme: dark) {
+  .banner.skip { background: #3f1212; color: #fecaca; border-color: #7f1d1d; }
+  .banner.maybe { background: #3b2a06; color: #fde68a; border-color: #92400e; }
+  .banner.ok { background: #0f2e1a; color: #bbf7d0; border-color: #166534; }
+}
+.banner b { display: block; margin-bottom: 2px; }
+.banner .q { display: block; opacity: .85; font-style: italic; margin: 2px 0 4px; }
+.card { border: 2px solid var(--border); border-radius: 10px; padding: 9px 11px; margin-bottom: 8px; font-size: 12px; }
+.card.APPLY { border-color: #16a34a; } .card.MAYBE { border-color: #d97706; } .card.SKIP { border-color: #dc2626; }
+.card .v { font-weight: 700; font-size: 13px; }
+.card.APPLY .v { color: #16a34a; } .card.MAYBE .v { color: #d97706; } .card.SKIP .v { color: #dc2626; }
+.card .line { margin: 3px 0; }
+.card .k { color: var(--muted); }
+.card .tag { display: inline-block; font-size: 10.5px; padding: 0 5px; border-radius: 8px; margin-left: 4px; background: var(--pill); }
+.card .tag.Strong { background: #dcfce7; color: #14532d; } .card .tag.Partial { background: #fef3c7; color: #78350f; } .card .tag.Gap { background: #fee2e2; color: #7f1d1d; }
+.card .meta { color: var(--muted); font-size: 10.5px; margin-top: 5px; }
+.card .err { color: var(--danger); }
+.notion { font-size: 12px; margin-bottom: 8px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.notion:empty { display: none; }
+.notion a { color: var(--accent); }
+.spin { display: inline-block; width: 10px; height: 10px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin .8s linear infinite; vertical-align: -1px; margin-right: 4px; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.badge { font-size: 10.5px; padding: 0 6px; border-radius: 8px; background: var(--pill); }
+.badge.APPLY { background: #dcfce7; color: #14532d; } .badge.MAYBE { background: #fef3c7; color: #78350f; } .badge.SKIP { background: #fee2e2; color: #7f1d1d; }
