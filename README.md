@@ -1,68 +1,98 @@
 # JD Filler
 
-Personal Chrome extension. Open any job posting, press the toolbar button (or `Cmd+Shift+J`), and it pulls out:
+Personal Chrome extension. Open a job posting, press the toolbar button (or `Cmd+Shift+J`), and in one place you get:
 
-| Field | Where it comes from |
-|---|---|
-| Company, Role, Job link | Site selectors, JSON-LD `JobPosting`, page title, or the ATS URL (Lever, Greenhouse, Workday, Ashby, iCIMS, ...) |
-| Source | Hostname: LinkedIn / Indeed / Handshake / Glassdoor / Company Site / Other |
-| Location, Work mode (Remote / Hybrid / On-site) | Pills and labels first, then the JD text |
-| Job type (Full-time / Part-time / Contract / Internship / Co-op) | Pills, JSON-LD `employmentType`, then the JD text |
-| Salary | Pills, JSON-LD `baseSalary`, then the first `$X - $Y` range in the JD |
-| Experience asked, Seniority | `N+ years ... experience` in the JD; seniority from the title |
-| Sponsorship (Sponsors / No sponsorship / Unknown) + note | Sentences mentioning sponsorship, visa, H-1B, OPT, citizenship, clearance, ITAR, E-Verify, C2C |
-| Work auth lines | Those sentences quoted verbatim so you can read them yourself |
-| Posted, Applicants, Deadline | LinkedIn subline, Workday "Posted", JSON-LD `datePosted` / `validThrough` |
-| Full JD text | The description block, trimmed to 30k chars |
+1. **Clean facts** pulled from the page: company, role, link, source, location, work mode, job type, salary, experience asked, sponsorship (with the exact work-auth sentences), posted date, and the JD text.
+2. **A rule check in code** (no API call): a red banner for auto-skip hits and an amber one for maybes, each with the quoted sentence.
+3. **A Claude verdict** (APPLY / MAYBE / SKIP) with fit, what to lead with, what not to claim, and the next action.
+4. **A row in your Notion Application Tracker**, created automatically on APPLY (or by hand), with Undo.
 
-Every field is editable in the popup before you copy.
+Plus the original tools: editable fields, Copy for Grok (template), Saved list, CSV export.
 
-## Buttons
-
-- **Copy for Grok** - renders the template (Settings tab) with all facts plus the full JD. Paste it into your Grok bot.
-- **Facts only** - same template, cut off before the `{{jd}}` line.
-- **JSON** - raw fields as JSON.
-- **Save** - keeps the job in the Saved tab (stored locally in Chrome). From there you can Load, Copy, Open, tick Applied, Delete, or Export CSV. The CSV columns match the Notion Job Tracker (Role, Company, Job Link, Location, Work Mode, Source, Sponsorship, Stage, Applied On, ...).
-- **Re-read** - run the extractor again (use this on LinkedIn after you click a different job in the list).
-
-## Install (unpacked, personal use)
+## Install
 
 1. `git clone https://github.com/krushaalkalkani/jd-filler.git`
-2. Open `chrome://extensions`, turn on **Developer mode** (top right).
-3. **Load unpacked** and pick the `jd-filler` folder.
-4. Pin the extension. Shortcut: `Cmd+Shift+J` (Mac) / `Ctrl+Shift+J`. Change it at `chrome://extensions/shortcuts`.
+2. `chrome://extensions` -> turn on **Developer mode** -> **Load unpacked** -> pick the `jd-filler` folder.
+3. Pin the icon. Shortcut `Cmd+Shift+J` (Mac) / `Ctrl+Shift+J`; change it at `chrome://extensions/shortcuts`.
+4. After every `git pull`, press the refresh icon on the extension card.
 
-After you `git pull` an update, press the refresh icon on the extension card in `chrome://extensions`.
+## Keys (Settings tab)
+
+Both keys are stored in `chrome.storage.local` on this machine only. They are never synced and never printed.
+
+### Anthropic API key
+1. Create a key at https://platform.claude.com/ (API keys).
+2. Paste it into **Anthropic API key**, press **Test**. The test lists the models your key can see and warns if `claude-haiku-5-5` or `claude-sonnet-5-5` is missing.
+3. Calls go from the extension's background worker straight to `api.anthropic.com` with the `anthropic-dangerous-direct-browser-access: true` header. Fast mode uses Haiku; the **Deep** toggle uses Sonnet.
+
+### Notion token and database
+1. Go to https://www.notion.so/profile/integrations -> **New integration** (internal). Copy the secret.
+2. Share the tracker with the integration: open the **Application Tracker** database in Notion -> `...` menu (top right) -> **Connections** -> add your integration.
+3. Paste the secret into **Notion internal integration token**. The data source id and database page id are prefilled for your tracker; change them if you move it. Press **Test**: it checks the token, reaches the data source, and lists any of the 10 required properties that are missing.
+
+Required properties and the exact option names (the test tells you if one is missing):
+
+| Property | Type | Options |
+|---|---|---|
+| Company Name | title | |
+| Job Title | text | |
+| Job Link | url | |
+| Location | text | |
+| Salary Range | text | |
+| Work Mode | select | Remote, Hybrid, On-site |
+| Job Type | select | Full Time, Part Time, Internship, Contract, Volunteer |
+| Sponsorship | select | Sponsors visa, OPT/CPT OK, Not mentioned, No sponsorship, US citizens only |
+| Source | select | Linkedin, Job Portal, Company's career page, Indeed, Sonic Jobs |
+| Applied On | date | date only |
+
+Mapping: Greenhouse / Lever / Workday / Ashby / company sites -> "Company's career page"; Glassdoor / Handshake / other boards -> "Job Portal". A select is left empty when the value is Unknown. The Rejected On column is never touched.
+
+## Buttons (Job tab)
+
+- **Check** - sends the page facts, the rule hits and the cleaned JD (max ~12k chars) to Claude and shows the card. Verdict rules, your profile and evidence levels live in the system prompt in `background.js` (cached with `cache_control`). Strict JSON comes back through structured outputs (`output_config.format`). The card: line 1 verdict / company / role / location / mode / pay / level, line 2 auth + quotes + `OPT day X/90`, then Fit (3 points tagged Strong / Partial / Gap), Lead with, Don't claim, Do now, red flags, and the model/time/token line.
+- **Deep** - toggle: Sonnet instead of Haiku. Remembered.
+- **Log to Notion** - creates the tracker row. It first queries the data source for the same Job Link and shows "Already logged" instead of creating a duplicate. On success you get the page link and an **Undo** button (moves the page to trash). The job is also saved and marked Applied in the Saved tab. With the Settings option on (default), this runs by itself when the verdict is APPLY.
+- **Copy for Grok / Facts only / JSON / Save / Re-read** - as before. Re-read after you click a different job in a LinkedIn list.
+
+The OPT counter in the header is computed in code: day 1 = 2026-09-12, limit 90 days. Change `OPT_START` in `popup.js` if your EAD date differs.
+
+## Rule check (rules.js)
+
+Runs on the JD text as soon as the page is read, and again before every Check.
+
+AUTO-SKIP: US citizen only; green card / permanent resident only; security clearance; ITAR / EAR / "U.S. person"; C2C only; PhD required (not preferred, not "MS or PhD"); Senior / Sr / Staff / Principal / Lead / III in the title; a firm 3+ years ("N+ years" counts, plain "N years" needs required / must / minimum; "in lieu of a degree" and "preferred" never count); unpaid; under 20 hours a week; a required language other than English, Hindi or Gujarati.
+
+MAYBE: no visa sponsorship / will not sponsor; 1099; contract under 6 months; seasonal; pay under $60K a year (hourly x 2080).
+
+Each hit shows the exact sentence. Edit the JD or Salary field and the banner recomputes.
+
+## Errors
+
+Bad key (401), rate limit (429), server errors and network timeouts (20 s) show as a message with a **Retry** button. Nothing is sent anywhere except `api.anthropic.com` and `api.notion.com`.
 
 ## Supported sites
 
-Site-specific readers: LinkedIn (logged in and guest view), Indeed, Glassdoor, Handshake, Greenhouse, Lever, Workday, Ashby, SmartRecruiters.
-Everything else uses JSON-LD `JobPosting` (most company career sites have it) and a generic fallback (h1, og tags, the largest description-like block). The grey line under the form says which reader was used.
+Site readers: LinkedIn (logged in, search / collections / view pages, and the guest view), Indeed, Glassdoor, Handshake, Greenhouse, Lever, Workday, Ashby, SmartRecruiters, Sonic Jobs (source only). Everything else: JSON-LD `JobPosting` plus a generic fallback. The grey line under the form says which reader ran.
 
-Tested on: Greenhouse (job-boards.greenhouse.io), LinkedIn guest job view, Workday (myworkdayjobs.com), Lever (jobs.lever.co).
+On LinkedIn every read is scoped to the selected job's detail pane (top card + "About the job"). The job list, Premium "match" widgets, "People you can reach out to", company insights and the footer are ignored, and a role that looks like LinkedIn chrome ("Low match to this role", "Top applicant", ...) is thrown away in favour of the tab title.
 
-## Template
+## Testing the extractor
 
-Settings tab. Placeholders:
+`test-extract.html` runs `extractor.js` and `rules.js` against the saved pages in `fixtures/` and shows pass/fail per field.
 
-```
-{{company}} {{role}} {{link}} {{source}} {{location}} {{work_mode}} {{job_type}} {{salary}}
-{{experience}} {{seniority}} {{sponsorship}} {{sponsorship_note}} {{auth_lines}}
-{{posted}} {{applicants}} {{deadline}} {{jd}} {{date}}
+```bash
+python3 -m http.server 8766
 ```
 
-Empty fields render as `Not stated`. The template is synced through your Chrome profile.
+Then open http://localhost:8766/test-extract.html (opening the file directly also works in Chrome).
 
-## Notes
-
-- Nothing runs on a page until you open the popup (`activeTab` + `scripting`, no background host permissions). Nothing leaves your browser; saved jobs live in `chrome.storage.local`.
-- Sponsorship detection is regex-based. Always read the quoted auth lines; "Unknown" means the posting did not say it clearly.
-- LinkedIn changes its class names now and then. If Role or Company come back empty on LinkedIn, the selectors in `extractor.js` (`linkedin()` function) need updating.
-- Chrome blocks extensions on `chrome://` pages and the Web Store; the popup will say so.
+Fixtures: real captures of a Greenhouse page, a LinkedIn guest job view, a Workday page and a Lever page, plus `linkedin-search-mock` - a hand-built copy of the logged-in search layout that reproduced the HNTB bug (other card's salary, Premium widget, footer). To add a real page: open it, Settings -> **Save page as fixture**, move the downloaded `*.fixture.js` into `fixtures/`, fill its `expect` values, and add a `<script>` line in `test-extract.html`.
 
 ## Files
 
-- `manifest.json` - MV3 manifest
-- `extractor.js` - injected into the page, returns the job object
-- `popup.html` / `popup.css` / `popup.js` - the UI, copy, save, CSV export, template
-- `icons/` - toolbar icons
+- `manifest.json` - MV3; `activeTab`, `scripting`, `storage`; host permissions only for the two APIs
+- `extractor.js` - injected into the page on demand, returns the job object
+- `rules.js` - hard rules (shared by popup and test page)
+- `background.js` - service worker: Claude verdict, Notion query / create / trash, key tests
+- `popup.html` / `popup.css` / `popup.js` - UI
+- `fixtures/`, `test-extract.html` - extractor tests
