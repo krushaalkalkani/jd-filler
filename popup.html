@@ -9,109 +9,144 @@
   <header class="top">
     <div class="brand">
       <span class="logo">JD</span>
-      <div>
+      <div class="brand-text">
         <div class="title">JD Filler</div>
         <div class="status" id="status">Reading page…</div>
       </div>
-      <div class="opt" id="optDay" title="OPT unemployment clock. Day 1 = Sept 12, 2026. Limit 90 days."></div>
+      <div class="stats">
+        <span id="optDay" title="OPT unemployment clock. Day 1 = Sept 12, 2026. Limit 90 days."></span>
+        <span id="weekStat" title="Applications this week against your goal (Settings)"></span>
+      </div>
     </div>
     <nav class="tabs">
       <button class="tab active" data-tab="job">Job</button>
-      <button class="tab" data-tab="saved">Saved <span id="savedCount" class="pill">0</span></button>
+      <button class="tab" data-tab="saved">Tracker <span id="savedCount" class="count">0</span></button>
       <button class="tab" data-tab="settings">Settings</button>
+      <button class="tab" id="openProfile" title="Edit your profile, links, education, skills and EEO answers">Profile</button>
     </nav>
   </header>
 
   <section class="panel active" id="panel-job">
-    <div class="actions">
-      <button id="check" class="primary" title="Ask Claude for an apply score (0-100) on this job">Check</button>
-      <label class="toggle" title="Deep = Opus 5.5 at xhigh effort (slower). Off = Opus 5.5 at medium effort."><input type="checkbox" id="deep"> Deep</label>
-      <button id="logNotion" title="Create a row in the Notion Application Tracker">Log to Notion</button>
-      <button id="copyGrok" title="Copy facts + full JD in the template format">Copy for Grok</button>
-      <button id="copyFacts" title="Copy only the quick facts">Facts only</button>
-      <button id="copyJson" title="Copy as JSON">JSON</button>
-      <button id="save" title="Keep this job in the Saved list">Save</button>
-      <button id="reextract" title="Read the page again">Re-read</button>
+    <div class="hero">
+      <div class="hero-main">
+        <div class="role" id="h_role">—</div>
+        <div class="company-line"><span id="h_company"></span><span id="h_location"></span></div>
+        <div class="chips" id="h_chips"></div>
+      </div>
+      <button class="ring" id="ringBtn" title="Get an apply score from Claude Opus 5.5">
+        <svg viewBox="0 0 48 48" width="56" height="56" aria-hidden="true">
+          <circle class="ring-track" cx="24" cy="24" r="20"></circle>
+          <circle class="ring-fill" id="ringFill" cx="24" cy="24" r="20"></circle>
+        </svg>
+        <span class="ring-text" id="ringText">Check</span>
+      </button>
     </div>
+    <div class="links" id="h_links"></div>
 
+    <div class="actions">
+      <button id="check" class="primary">Check</button>
+      <label class="toggle" title="Deep = Opus 5.5 at xhigh effort (slower). Off = medium effort."><input type="checkbox" id="deep"> Deep</label>
+      <button id="logNotion">Log to Notion</button>
+      <button id="copyResume" title="Copy a resume-tailoring prompt with the keywords, fit and JD">Resume prompt</button>
+      <span class="grow"></span>
+      <button id="reextract" class="quiet" title="Read the page again">Re-read</button>
+    </div>
+    <div id="notion" class="notion"></div>
     <div id="rules"></div>
     <div id="verdict"></div>
-    <div id="notion" class="notion"></div>
 
-    <div class="grid">
-      <label>Company<input id="f_company" type="text"></label>
-      <label>Role<input id="f_role" type="text"></label>
-      <label class="wide">Job link<input id="f_link" type="text"></label>
-      <label>Source
-        <select id="f_source">
-          <option>LinkedIn</option><option>Company Site</option><option>Indeed</option><option>Handshake</option><option>Glassdoor</option><option>Sonic Jobs</option><option>Referral</option><option>Other</option>
-        </select>
-      </label>
-      <label>Location<input id="f_location" type="text"></label>
-      <label>Work mode
-        <select id="f_work_mode"><option>Remote</option><option>Hybrid</option><option>On-site</option><option>Unknown</option></select>
-      </label>
-      <label>Job type
-        <select id="f_job_type"><option>Full-time</option><option>Part-time</option><option>Contract</option><option>Internship</option><option>Co-op</option><option>Volunteer</option><option>Unknown</option></select>
-      </label>
-      <label>Salary<input id="f_salary" type="text"></label>
-      <label>Experience asked<input id="f_experience" type="text"></label>
-      <label>Sponsorship
-        <select id="f_sponsorship"><option>Sponsors</option><option>No sponsorship</option><option>Unknown</option></select>
-      </label>
-      <label>Seniority<input id="f_seniority" type="text"></label>
-      <label class="wide">Sponsorship note<input id="f_sponsorship_note" type="text"></label>
-      <label>Posted<input id="f_posted" type="text"></label>
-      <label>Applicants<input id="f_applicants" type="text"></label>
-      <label class="wide">Work auth lines (quoted from JD)<textarea id="f_auth_lines" rows="3"></textarea></label>
-      <label class="wide">Job description <span class="muted" id="jdLen"></span><textarea id="f_jd" rows="7"></textarea></label>
-    </div>
+    <details class="section" id="detailsFields">
+      <summary>Details <span class="muted">edit before you copy or log</span></summary>
+      <div class="grid">
+        <label>Company<input id="f_company" type="text"></label>
+        <label>Role<input id="f_role" type="text"></label>
+        <label class="wide">Job link<input id="f_link" type="text"></label>
+        <label>Source
+          <select id="f_source">
+            <option>LinkedIn</option><option>Company Site</option><option>Indeed</option><option>Handshake</option><option>Glassdoor</option><option>Sonic Jobs</option><option>Referral</option><option>Other</option>
+          </select>
+        </label>
+        <label>Location<input id="f_location" type="text"></label>
+        <label>Work mode
+          <select id="f_work_mode"><option>Remote</option><option>Hybrid</option><option>On-site</option><option>Unknown</option></select>
+        </label>
+        <label>Job type
+          <select id="f_job_type"><option>Full-time</option><option>Part-time</option><option>Contract</option><option>Internship</option><option>Co-op</option><option>Volunteer</option><option>Unknown</option></select>
+        </label>
+        <label>Salary<input id="f_salary" type="text"></label>
+        <label>Experience asked<input id="f_experience" type="text"></label>
+        <label>Sponsorship
+          <select id="f_sponsorship"><option>Sponsors</option><option>No sponsorship</option><option>Unknown</option></select>
+        </label>
+        <label>Seniority<input id="f_seniority" type="text"></label>
+        <label class="wide">Sponsorship note<input id="f_sponsorship_note" type="text"></label>
+        <label>Posted<input id="f_posted" type="text"></label>
+        <label>Applicants<input id="f_applicants" type="text"></label>
+        <label class="wide">Work auth lines quoted from the JD<textarea id="f_auth_lines" rows="3"></textarea></label>
+      </div>
+    </details>
+    <details class="section" id="detailsJd">
+      <summary>Job description <span class="muted" id="jdLen"></span></summary>
+      <textarea id="f_jd" rows="10"></textarea>
+    </details>
     <div class="debug muted" id="debug"></div>
   </section>
 
   <section class="panel" id="panel-saved">
-    <div class="actions">
-      <button id="exportCsv" class="primary">Export CSV</button>
-      <button id="clearSaved" class="danger">Clear all</button>
+    <div class="tracker-head">
+      <div class="filters" id="stageFilters"></div>
+      <span class="grow"></span>
+      <button id="exportCsv" class="quiet">Export CSV</button>
+      <button id="clearSaved" class="quiet danger">Clear all</button>
     </div>
     <div id="savedList" class="list"></div>
   </section>
 
   <section class="panel" id="panel-settings">
-    <h3>Keys (stored locally, never synced)</h3>
+    <h3>Keys</h3>
+    <p class="muted small">Stored on this computer only. Never synced, never shown in logs.</p>
     <label class="wide">Anthropic API key
-      <div class="row-inline"><input id="s_anthropicKey" type="password" placeholder="sk-ant-…" autocomplete="off"><button id="testClaude">Test</button></div>
+      <div class="row-inline"><input id="s_anthropicKey" type="password" placeholder="sk-ant-…" autocomplete="off"><button id="testClaude" class="quiet">Test</button></div>
     </label>
-    <label class="wide">Notion internal integration token
-      <div class="row-inline"><input id="s_notionToken" type="password" placeholder="ntn_…" autocomplete="off"><button id="testNotion">Test</button></div>
+    <label class="wide">Notion integration token
+      <div class="row-inline"><input id="s_notionToken" type="password" placeholder="ntn_…" autocomplete="off"><button id="testNotion" class="quiet">Test</button></div>
     </label>
     <div class="grid">
       <label>Notion data source id<input id="s_notionDataSourceId" type="text"></label>
       <label>Notion database page id<input id="s_notionDatabaseId" type="text"></label>
     </div>
-    <label class="toggle block"><input type="checkbox" id="s_autoLog"> Log to Notion automatically when the score is at least <input type="number" id="s_autoLogMin" min="0" max="100" step="5" class="num"> %</label>
-    <label class="toggle block"><input type="checkbox" id="s_autoCheck"> Run Check automatically when the popup opens</label>
-    <div class="actions"><button id="saveSettings" class="primary">Save settings</button><span id="settingsMsg" class="muted"></span></div>
-    <div class="muted small">Model: claude-opus-5-5 (latest Opus). Deep = same model at xhigh effort instead of medium. Requests go only to api.anthropic.com and api.notion.com, with a 20 s timeout.</div>
+    <div id="settingsMsg" class="settings-msg"></div>
+
+    <h3>Behaviour</h3>
+    <label class="toggle block"><input type="checkbox" id="s_autoLog"> Log to Notion when the score is at least <input type="number" id="s_autoLogMin" min="0" max="100" step="5" class="num">%</label>
+    <label class="toggle block"><input type="checkbox" id="s_autoCheck"> Run Check as soon as the popup opens</label>
+    <label class="toggle block">Weekly application goal <input type="number" id="s_weeklyGoal" min="1" max="200" class="num"></label>
+    <div class="actions"><button id="saveSettings" class="primary">Save settings</button></div>
+    <p class="muted small">Model: claude-opus-5-5 at medium effort; Deep uses xhigh. Requests go only to api.anthropic.com and api.notion.com, 20 s timeout.</p>
 
     <h3>Copy template</h3>
-    <label class="wide">
-      <textarea id="template" rows="12" spellcheck="false"></textarea>
-    </label>
-    <div class="muted small">
+    <textarea id="template" rows="12" spellcheck="false"></textarea>
+    <p class="muted small">
       Placeholders: {{company}} {{role}} {{link}} {{source}} {{location}} {{work_mode}} {{job_type}} {{salary}}
-      {{experience}} {{seniority}} {{sponsorship}} {{sponsorship_note}} {{auth_lines}} {{posted}} {{applicants}} {{deadline}} {{jd}} {{date}}.
-      "Facts only" copies everything above the line that contains {{jd}}.
-    </div>
+      {{experience}} {{seniority}} {{sponsorship}} {{sponsorship_note}} {{auth_lines}} {{posted}} {{applicants}} {{deadline}} {{score}} {{keywords}} {{jd}} {{date}}.
+      "Facts" copies everything above the line that contains {{jd}}.
+    </p>
     <div class="actions">
       <button id="saveTemplate" class="primary">Save template</button>
-      <button id="resetTemplate">Reset to default</button>
+      <button id="resetTemplate" class="quiet">Reset to default</button>
     </div>
 
     <h3>Debug</h3>
-    <div class="actions"><button id="saveFixture">Save page as fixture</button><span class="muted small">Downloads the current page's HTML as a fixtures/*.fixture.js file for test-extract.html.</span></div>
-    <div class="muted small">Shortcut: Cmd+Shift+J (Mac) / Ctrl+Shift+J opens this popup. Change it at chrome://extensions/shortcuts.</div>
+    <div class="actions"><button id="saveFixture" class="quiet">Save page as fixture</button></div>
+    <p class="muted small">Downloads this page's HTML as a fixtures/*.fixture.js file for test-extract.html. Shortcut to open the popup: Cmd+Shift+J (change at chrome://extensions/shortcuts).</p>
   </section>
+
+  <footer class="bar" id="bar">
+    <button id="copyGrok" class="primary">Copy for Grok</button>
+    <button id="copyFacts">Facts</button>
+    <button id="copyJson">JSON</button>
+    <button id="save">Save</button>
+  </footer>
 
   <div id="toast" class="toast"></div>
   <script src="rules.js"></script>

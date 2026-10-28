@@ -73,7 +73,10 @@
     }
     add(skip, 'Requires a language other than English / Hindi / Gujarati', firstMatch(sents, new RegExp(`(?:fluen\\w*|proficien\\w*|native|bilingual|speak\\w*|written and (?:spoken|verbal)|command of)[^.]{0,30}\\b(?:${LANGS})\\b|\\b(?:${LANGS})\\b[^.]{0,30}(?:required|fluen\\w*|proficien\\w*|must|is a must|mandatory)`, 'i'), pref));
 
+    add(skip, 'Pay-to-work / consultancy signals', firstMatch(sents, /training fee|pay for (?:your |the )?training|upfront (?:fee|payment)|registration fee|processing fee|(?:we|will) market your profile|marketing your profile|bench sales|guaranteed placement|opt (?:candidates?|students?) (?:only|welcome|preferred)|h-?1b transfer (?:only|candidates)|send (?:a copy of )?(?:your )?(?:ssn|social security|passport|i-?94|dl copy)/i));
+
     // ---- MAYBE ----
+    add(maybe, 'Personal email contact', firstMatch(sents, /[\w.+-]+@(?:gmail|yahoo|hotmail|outlook|aol)\.com/i));
     add(maybe, 'No visa sponsorship', firstMatch(sents, /no (?:visa |work |employment |immigration )?sponsorship|not (?:able|willing) to sponsor|unable to sponsor|will not (?:be able to )?sponsor|cannot sponsor|can't sponsor|does not (?:offer |provide )?sponsor|do not (?:offer |provide )?sponsor|without (?:the need for |need of |requiring |any )?(?:visa |employer |company |immigration )?sponsorship|sponsorship (?:is |will be )?(?:not|un)available|not (?:eligible|open|available) for (?:visa |work )?sponsorship/i));
     add(maybe, '1099 contract', firstMatch(sents, /\b1099\b/));
     for (const s of sents) {
