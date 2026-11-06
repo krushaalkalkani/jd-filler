@@ -23,10 +23,11 @@
   window.fire = (m) => listeners.forEach((l) => l(m));
   window.chrome = {
     storage: { local: { get: async (k) => { const o = {}; for (const x of [].concat(k)) if (x in mem) o[x] = mem[x]; return o; }, set: async (o) => { Object.assign(mem, o); } }, onChanged: { addListener: (f) => changeL.push(f) } },
-    runtime: { onMessage: { addListener: (f) => listeners.push(f) }, sendMessage: async (m) => { console.log('sendMessage', m.type); if (m.type === 'jdf.togglePanel') { window.__open = !window.__open; return { ok: true, open: window.__open }; } return { ok: true, open: false }; } }
+    runtime: { id: "harness", onMessage: { addListener: (f) => listeners.push(f) }, sendMessage: async (m) => { console.log('sendMessage', m.type); if (m.type === 'jdf.togglePanel') { window.__open = !window.__open; return { ok: true, open: window.__open }; } return { ok: true, open: false }; } }
   };
 })();
 </script>
-<script src="edge-tab.js"></script>
+<!-- Cache-busted so edits to edge-tab.js show on reload. -->
+<script>document.write('<script src="edge-tab.js?' + Date.now() + '"><\/script>');</script>
 </body>
 </html>

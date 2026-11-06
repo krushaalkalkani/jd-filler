@@ -247,6 +247,107 @@
   function cleanCompany(s) {
     return clean(s).replace(/^\d{2,}\s+/, '').replace(/^at\s+/i, '').replace(/\s*(?:logo|·\s*follow|follow)$/i, '').replace(/\s*\(.*?hiring.*?\)$/i, '').trim();
   }
+
+  function imgUrl(el) {
+    if (!el) return '';
+    const raw = el.currentSrc || el.src || el.getAttribute('data-delayed-url') || el.getAttribute('data-src') || el.getAttribute('data-ghost-url') || '';
+    if (raw && /^https?:/i.test(raw) && !/spacer|blank|pixel|data:image\/gif/i.test(raw)) return raw;
+    const srcset = el.getAttribute('srcset') || '';
+    if (srcset) {
+      const first = srcset.split(',')[0].trim().split(/\s+/)[0];
+      if (first && /^https?:/i.test(first)) return first;
+    }
+    return '';
+  }
+
+  function absUrl(href) {
+    if (!href || href === '#') return '';
+    try {
+      const u = new URL(href, location.href);
+      if (!/^https?:$/i.test(u.protocol)) return '';
+      u.hash = '';
+      return u.href;
+    } catch (e) { return ''; }
+  }
+
+  // LinkedIn embeds logo + /company/ link in the DOM. After Apply, Greenhouse / Lever / Ashby
+  // pages often only expose the brand in meta tags and an outbound careers link.
+  function metaLogo() {
+    for (const sel of [
+      'meta[property="og:image"]',
+      'meta[name="twitter:image"]',
+      'meta[name="twitter:image:src"]',
+      'link[rel="apple-touch-icon"]',
+      'link[rel="icon"][sizes="192x192"]',
+      'link[rel="icon"][sizes="180x180"]'
+    ]) {
+      const el = q(sel);
+      if (!el) continue;
+      const raw = (el.getAttribute('content') || el.getAttribute('href') || '').trim();
+      const u = absUrl(raw) || (/^https?:/i.test(raw) ? raw : '');
+      if (u && !/spacer|blank|pixel|1x1/i.test(u)) return u;
+    }
+    return '';
+  }
+
+  function externalCompanyUrl(root) {
+    // Skip ATS / social / legal hosts. Prefer a short careers / jobs / homepage path.
+    const skipHost = /(^|\.)(greenhouse\.(io|com)|lever\.co|ashbyhq\.com|myworkdayjobs\.com|myworkdaysite\.com|smartrecruiters\.com|icims\.com|jobvite\.com|workable\.com|bamboohr\.com|rippling\.com|linkedin\.com|twitter\.com|x\.com|facebook\.com|instagram\.com|youtube\.com|google\.com|gstatic\.com|apple\.com|microsoft\.com|jamsadr\.com|cloudflare\.com|recaptcha\.net)$/i;
+    const skipPath = /\/(privacy|terms|login|sign[_-]?in|cookie|legal|arbitration|users\/|auth)/i;
+    let best = '';
+    let bestScore = -1;
+    for (const a of qa('a[href^="http"]', root)) {
+      let u;
+      try { u = new URL(a.getAttribute('href') || a.href, location.href); } catch (e) { continue; }
+      if (!/^https?:$/i.test(u.protocol)) continue;
+      const h = u.hostname.replace(/^www\./, '');
+      if (skipHost.test(h) || h === host) continue;
+      if (skipPath.test(u.pathname)) continue;
+      const path = u.pathname.replace(/\/+$/, '') || '/';
+      let score = 1;
+      if (path === '/' || path === '') score = 5;
+      else if (/^\/(jobs|careers|about|company|team)(\/|$)/i.test(path)) score = 4;
+      else if (/jobs|careers/i.test(path)) score = 3;
+      if (score > bestScore) {
+        bestScore = score;
+        u.hash = '';
+        u.search = '';
+        best = u.href;
+        if (score >= 5) break;
+      }
+    }
+    return best;
+  }
+
+  function companyFromTitle() {
+    const t = clean(document.title);
+    const m = t.match(/\bat\s+(.+?)\s*$/i) || t.match(/\bat\s+(.+?)\s*[|\u2013\u2014-]/i);
+    return m ? cleanCompany(m[1]) : '';
+  }
+
+  // Company logo + profile/website link from the job header.
+  function companyBrand(root) {
+    const out = {};
+    if (!root) return out;
+    const nameA = qa('a[href*="/company/"]', root).find((a) => {
+      const t = clean(a.innerText || a.textContent);
+      return t && t.length < 80 && !/follow|see all|jobs/i.test(t);
+    });
+    if (nameA) out.company_url = absUrl(nameA.getAttribute('href') || nameA.href);
+    const img = firstEl([
+      '.job-details-jobs-unified-top-card__company-logo img',
+      '.jobs-unified-top-card__company-logo img',
+      '.artdeco-entity-image',
+      '[class*="company-logo"] img',
+      '[class*="EntityPhoto"]',
+      'a[href*="/company/"] img',
+      'img[alt*="logo" i]',
+      'img[alt*="Logo"]'
+    ], root);
+    const u = imgUrl(img);
+    if (u) out.logo = u;
+    return out;
+  }
   function cleanRole(s) {
     const t = clean(s).replace(/\s*-\s*job post$/i, '').replace(/\s*\|\s*linkedin$/i, '').replace(/\s+at\s+[^|]+$/i, (m) => (m.length > 40 ? '' : m)).trim();
     if (/^(?:re)?captcha$|cloudflare|attention required|just a moment|enable javascript|privacy error|access denied/i.test(t)) return '';
@@ -267,6 +368,12 @@
       out.role = clean(jp.title);
       const org = jp.hiringOrganization;
       out.company = clean(typeof org === 'string' ? org : org && org.name);
+      if (org && typeof org === 'object') {
+        const logo = org.logo;
+        out.logo = typeof logo === 'string' ? logo : (logo && (logo.url || logo.contentUrl)) || '';
+        const same = org.sameAs ? [].concat(org.sameAs).find((x) => /^https?:/i.test(x)) : '';
+        out.company_url = same || org.url || '';
+      }
       const locs = [].concat(jp.jobLocation || []);
       out.location = locs.map((l) => {
         if (!l) return '';
@@ -373,6 +480,7 @@
       const near = links.filter(precedes).pop() || links.find(follows) || links[0];
       if (near) r.company = clean(near.innerText);
     }
+    Object.assign(r, companyBrand(pane));
 
     // "N days ago" sits in its own span; climb to the line that also holds the location and applicant count.
     let primEl = qa('p, div, span', pane).find((el) => el.children.length <= 6 && follows(el)
@@ -435,6 +543,7 @@
         '[class*="company-name"]', 'a.topcard__org-name-link', '.topcard__org-name-link',
         '.top-card-layout__second-subline a[href*="/company/"]', 'a[href*="/company/"]'
       ], top));
+      Object.assign(r, companyBrand(top));
 
       const prim = firstTxt([
         '.job-details-jobs-unified-top-card__tertiary-description-container', '.job-details-jobs-unified-top-card__primary-description-container',
@@ -483,6 +592,7 @@
     }
     r.role = liOk(r.role);
     r.company = liOk(r.company);
+    if (!r.logo || !r.company_url) Object.assign(r, Object.fromEntries(Object.entries(companyBrand(pane)).filter(([k, v]) => v && !r[k])));
     if (r.jd) {
       r.jd = r.jd
         .replace(/^About the job\s*/i, '')
@@ -499,6 +609,10 @@
     if (jk) r.link = `https://${location.hostname}/viewjob?jk=${jk}`;
     r.role = firstTxt(['h1[data-testid="jobsearch-JobInfoHeader-title"]', '.jobsearch-JobInfoHeader-title', 'h2.jobTitle', 'h1']);
     r.company = firstTxt(['[data-testid="inlineHeader-companyName"]', '[data-company-name="true"]', '[data-testid="jobsearch-CompanyInfoContainer"] a', '.jobsearch-InlineCompanyRating > div:first-child']);
+    const coA = firstEl(['[data-testid="inlineHeader-companyName"] a', '[data-company-name="true"] a', '[data-testid="jobsearch-CompanyInfoContainer"] a']);
+    if (coA) r.company_url = absUrl(coA.href);
+    const coImg = firstEl(['[data-testid="jobsearch-CompanyHeader"] img', '[data-testid="inlineHeader-companyAvatar"] img', 'img[alt*="logo" i]']);
+    if (coImg) r.logo = imgUrl(coImg);
     r.location = firstTxt(['[data-testid="inlineHeader-companyLocation"]', '[data-testid="jobsearch-JobInfoHeader-companyLocation"]', '[data-testid="job-location"]']);
     const meta = firstTxt(['#salaryInfoAndJobType', '[data-testid="jobsearch-OtherJobDetailsContainer"]', '#jobDetailsSection']);
     if (meta) { r.salary = findSalary(meta); r.job_type = mapJobType(meta); r.work_mode = detectWorkMode(meta, true); }
@@ -509,8 +623,17 @@
   function greenhouse() {
     const r = {};
     r.role = firstTxt(['h1.section-header', '.app-title', '.job__title h1', 'h1.job__title', 'h1']);
-    r.company = firstTxt(['.company-name', '.job__company', '#header .company-name']);
+    r.company = firstTxt(['.company-name', '.job__company', '#header .company-name']) || companyFromTitle();
     r.location = firstTxt(['.job__location', '.location', '.body--metadata']);
+    const logo = firstEl(['.logo img', 'a.logo img', '.company-logo img', 'header img', 'img[alt*="logo" i]']);
+    if (logo) r.logo = imgUrl(logo);
+    if (!r.logo) r.logo = metaLogo();
+    r.company_url = externalCompanyUrl() || '';
+    // Last resort: the Greenhouse board home for this employer (still clickable).
+    if (!r.company_url) {
+      const slug = url.pathname.split('/').filter(Boolean)[0];
+      if (slug && slug !== 'embed' && slug !== 'jobs') r.company_url = `https://${url.hostname}/${slug}`;
+    }
     r.jd = block(firstEl(['.job__description', '#content', '#job_description', 'main']));
     return r;
   }
@@ -522,7 +645,15 @@
     r.job_type = mapJobType(firstTxt(['.posting-categories .commitment', '.posting-category.commitment']));
     r.work_mode = detectWorkMode(firstTxt(['.posting-categories .workplaceTypes', '.posting-category.workplaceTypes']), true);
     const logo = q('.main-header-logo img, .posting-header img');
-    if (logo && logo.alt) r.company = clean(logo.alt).replace(/\s*logo$/i, '');
+    if (logo) {
+      r.logo = imgUrl(logo);
+      if (logo.alt) r.company = clean(logo.alt).replace(/\s*logo$/i, '');
+    }
+    if (!r.logo) r.logo = metaLogo();
+    if (!r.company) r.company = companyFromTitle();
+    const home = firstEl(['.main-header-logo a', 'a.main-header-logo']);
+    if (home) r.company_url = absUrl(home.href);
+    if (!r.company_url) r.company_url = externalCompanyUrl();
     r.jd = block(firstEl(['[data-qa="job-description"]', '.posting-page .section-wrapper.page-centered', '.posting-page .content']));
     if (r.jd) r.jd = r.jd.replace(/\n(?:Apply for this job|Apply now)\s*$/i, '').trim();
     return r;
@@ -540,36 +671,44 @@
     return r;
   }
 
-  // Ashby SSR embeds the posting in window.__appData. The visible DOM is a JS shell
-  // (and a reCAPTCHA badge), so class/h1 scraping often returns "reCAPTCHA" or nothing.
-  function ashbyAppData() {
-    let data = null;
-    try { if (window.__appData && typeof window.__appData === 'object') data = window.__appData; } catch (e) { /* ignore */ }
-    if (!data) {
-      for (const s of qa('script')) {
-        const t = s.textContent || '';
-        const m = t.match(/window\.__appData\s*=\s*(\{[\s\S]*\})\s*;?\s*$/);
-        if (!m) continue;
-        try { data = JSON.parse(m[1]); break; } catch (e) { /* truncated / trailing junk */ }
-        // Brace-match when the script has more after the object.
-        const start = t.indexOf('{', t.indexOf('window.__appData'));
-        if (start < 0) continue;
-        let depth = 0;
-        for (let i = start; i < t.length; i++) {
-          const c = t[i];
-          if (c === '{') depth++;
-          else if (c === '}') {
-            depth--;
-            if (depth === 0) {
-              try { data = JSON.parse(t.slice(start, i + 1)); } catch (e) { data = null; }
-              break;
-            }
-          }
+  // Ashby SSR embeds the posting in window.__appData. Content scripts run in an isolated
+  // world, so page `window.__appData` is invisible here. Read a MAIN-world bridge
+  // (`__jdFillerAppData`) or parse the inline <script> text from the DOM instead.
+  function parseAshbyAppDataText(t) {
+    if (!t || t.indexOf('__appData') < 0) return null;
+    const marker = t.indexOf('window.__appData');
+    if (marker < 0) return null;
+    const start = t.indexOf('{', marker);
+    if (start < 0) return null;
+    let depth = 0;
+    for (let i = start; i < t.length; i++) {
+      const c = t[i];
+      if (c === '{') depth++;
+      else if (c === '}') {
+        depth--;
+        if (depth === 0) {
+          try { return JSON.parse(t.slice(start, i + 1)); } catch (e) { return null; }
         }
-        if (data) break;
       }
     }
-    return data;
+    return null;
+  }
+
+  function ashbyAppData() {
+    try {
+      if (window.__jdFillerAppData && typeof window.__jdFillerAppData === 'object') return window.__jdFillerAppData;
+    } catch (e) { /* ignore */ }
+    for (const s of qa('script')) {
+      const data = parseAshbyAppDataText(s.textContent || '');
+      if (data && (data.posting || data.jobBoard)) return data;
+    }
+    return null;
+  }
+
+  function isAshbyPage() {
+    if (/ashbyhq\.com$/.test(host)) return true;
+    try { if (window.__jdFillerAppData && window.__jdFillerAppData.posting) return true; } catch (e) { /* ignore */ }
+    return qa('script').some((s) => /window\.__appData\s*=/.test(s.textContent || ''));
   }
 
   function mapAshbyEmployment(t) {
@@ -597,6 +736,10 @@
     if (posting && posting.title) {
       r.role = clean(posting.title);
       if (org && org.name) r.company = clean(org.name);
+      if (org && org.publicWebsite) r.company_url = absUrl(org.publicWebsite);
+      else if (org && org.customJobsPageUrl) r.company_url = absUrl(org.customJobsPageUrl);
+      const theme = org && org.theme;
+      if (theme) r.logo = theme.logoWordmarkUrl || theme.logoSquareUrl || theme.logoUrl || '';
       r.location = clean([posting.locationName].concat(posting.secondaryLocationNames || []).filter(Boolean).join(' | '));
       r.work_mode = mapAshbyWorkplace(posting.workplaceType) || (posting.isRemote ? 'Remote' : '');
       r.job_type = mapAshbyEmployment(posting.employmentType);
@@ -607,18 +750,16 @@
       r._ashby = true;
       return r;
     }
-    // Hydrated DOM fallback when __appData is missing (rare). Never trust a bare h1 alone -
-    // reCAPTCHA widgets also use headings.
+    // Hydrated DOM fallback (same idea as before the __appData change).
     r.role = firstTxt([
-      '[class*="ashby-job-posting-heading"]', '[class*="JobPosting"] h1', '[class*="jobPosting"] h1',
-      'h1:not([class*="captcha"]):not([id*="captcha"])'
+      '[class*="ashby-job-posting-heading"]', '[class*="JobPosting"] h1', '[class*="jobPosting"] h1', 'h1'
     ]);
     if (/recaptcha|captcha/i.test(r.role || '')) r.role = '';
     r.jd = block(firstEl([
       '[class*="descriptionText"]', '[class*="_description_"]', '.ashby-job-posting-right-pane',
       '[class*="JobDescription"]', 'article', 'main'
     ]));
-    if (r.jd && /recaptcha|enable javascript to run this app/i.test(r.jd) && r.jd.length < 400) r.jd = '';
+    if (r.jd && /recaptcha|enable javascript to run this app/i.test(r.jd) && r.jd.length < 800) r.jd = '';
     return r;
   }
 
@@ -676,7 +817,7 @@
       else if (/greenhouse\.io$/.test(host)) { site = greenhouse(); extractor = 'greenhouse'; }
       else if (/lever\.co$/.test(host)) { site = lever(); extractor = 'lever'; }
       else if (/myworkdayjobs\.com$/.test(host)) { site = workday(); extractor = 'workday'; }
-      else if (/ashbyhq\.com$/.test(host) || (typeof window !== 'undefined' && window.__appData && window.__appData.posting)) { site = ashby(); extractor = 'ashby'; }
+      else if (isAshbyPage()) { site = ashby(); extractor = 'ashby'; }
       else if (/smartrecruiters\.com$/.test(host)) { site = smartrecruiters(); extractor = 'smartrecruiters'; }
     } catch (e) { site = { _err: String(e) }; }
     let ld = {}; try { ld = jsonLd(); } catch (e) { /* ignore */ }
@@ -705,8 +846,15 @@
       applicants: pick('applicants'),
       deadline: pick('deadline'),
       seniority: pick('seniority'),
+      logo: pick('logo'),
+      company_url: pick('company_url'),
       jd
     };
+    // After LinkedIn Apply → ATS board, logo/URL often only exist as og:image / outbound careers links.
+    if (!r.logo) r.logo = metaLogo();
+    if (!r.company_url) r.company_url = externalCompanyUrl();
+    if (r.company_url) r.company_url = absUrl(r.company_url) || r.company_url;
+    if (r.logo && !/^https?:/i.test(r.logo)) r.logo = '';
     if (!r.work_mode) r.work_mode = detectWorkMode(r.location, true) || detectWorkMode(r.jd, false) || 'Unknown';
     if (!r.job_type) r.job_type = (/\bintern(?:ship)?s?\b/i.test(r.role) ? 'Internship' : '') || mapJobType(r.jd) || 'Unknown';
     if (!r.salary) r.salary = findSalary(r.jd) || 'Not stated';

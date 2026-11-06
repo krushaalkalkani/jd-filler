@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128">
+  <!-- Concept A "Gauge J": a J inside a fit-score gauge, on a midnight tile. -->
+  <defs>
+    <linearGradient id="t" x1="20" y1="8" x2="108" y2="120" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#2A2A5C"/><stop offset="1" stop-color="#0B0B18"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="64" cy="58" r="56" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#6366F1" stop-opacity=".35"/><stop offset="1" stop-color="#6366F1" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="arc" x1="26" y1="90" x2="102" y2="90" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#C084FC"/><stop offset=".5" stop-color="#818CF8"/><stop offset="1" stop-color="#34D399"/>
+    </linearGradient>
+    <filter id="dot" x="-100%" y="-100%" width="300%" height="300%"><feGaussianBlur stdDeviation="3"/></filter>
+  </defs>
+  <rect x="8" y="8" width="112" height="112" rx="28" fill="url(#t)"/>
+  <rect x="8" y="8" width="112" height="112" rx="28" fill="url(#glow)"/>
+  <rect x="8.75" y="8.75" width="110.5" height="110.5" rx="27.25" fill="none" stroke="#fff" stroke-opacity=".1" stroke-width="1.5"/>
+  <circle cx="64" cy="66" r="35" fill="none" stroke="#fff" stroke-opacity=".08" stroke-width="10" stroke-linecap="round" stroke-dasharray="164.9 220" transform="rotate(135 64 66)"/>
+  <circle cx="64" cy="66" r="35" fill="none" stroke="url(#arc)" stroke-width="10" stroke-linecap="round" stroke-dasharray="131 220" transform="rotate(135 64 66)"/>
+  <circle cx="97.6" cy="56.4" r="6" fill="#34D399" filter="url(#dot)" opacity=".9"/>
+  <circle cx="97.6" cy="56.4" r="3" fill="#ECFDF5"/>
+  <path d="M71 46v25a11 11 0 0 1-22 0" fill="none" stroke="#fff" stroke-width="11" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

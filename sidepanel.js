@@ -24,7 +24,7 @@ const DEFAULT_TEMPLATE = [
   '--- Job description ---',
   '{{jd}}'
 ].join('\n');
-const DEFAULT_SETTINGS = { anthropicKey: '', notionToken: '', notionDataSourceId: '42d52ecb-1841-82ad-939d-87b508593635', notionDatabaseId: '54352ecb18418259b0fc817076dabcbc', autoLog: true, autoLogMin: 70, autoCheck: false, deep: false, edgeTab: 'jobs' };
+const DEFAULT_SETTINGS = { anthropicKey: '', notionToken: '', notionDataSourceId: '42d52ecb-1841-82ad-939d-87b508593635', notionDatabaseId: '54352ecb18418259b0fc817076dabcbc', autoLog: true, autoLogMin: 70, autoCheck: false, deep: false, edgeTab: 'always' };
 const bandFor = (score) => (score >= 70 ? 'APPLY' : score >= 40 ? 'MAYBE' : 'SKIP');
 const bandWord = { APPLY: 'Apply', MAYBE: 'Maybe', SKIP: 'Skip' };
 // A verdict saved by an older build has a band but no score; map it so the ring and badges still render.
@@ -53,7 +53,12 @@ let notionPage = null; // {id,url} for the current job
 let notionState = null; // {cls, html} so it survives tab switches
 let windowId = null;
 let activeTab = null;  // {id, url} the panel is showing
-const cache = new Map(); // `${tabId}|${url}` -> snapshot of the job view
+const cache = new Map(); // stable tab key -> snapshot of the job view
+const byJob = new Map(); // stable job key -> { verdict, meta, notionPage, notionState, savedAt }
+const SESSION_VERDICTS = 'jdfVerdicts';
+const SESSION_RECENTS = 'jdfRecents';
+const TRACKING_PARAMS = /^(utm_|gh_src|gh_jid|fbclid|gclid|refId|trackingId|trk|eBP|original_referer|mc_cid|mc_eid|_gl|lever-source)/i;
+let recents = [];
 
 // ---------- icons (20x20 stroke paths) ----------
 const ICON = {
@@ -111,7 +116,24 @@ function optDay() {
 }
 function todayStr() { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; }
 function send(msg) { return chrome.runtime.sendMessage(msg); }
-const said = (x) => { const t = (x == null ? '' : String(x)).trim(); return t && !/^(not stated|unknown|none|n\/a|-)$/i.test(t) ? t : ''; };
+// Claude sometimes answers "Not stated (open to new grads)": anything that starts as a non-answer is hidden.
+const said = (x) => { const t = (x == null ? '' : String(x)).trim(); return t && !/^(not stated|not mentioned|unknown|none|n\/a|-)(\b|$)/i.test(t) ? t : ''; };
+// "2026-11-04" -> "2 days ago"; other wording ("Reposted 2 weeks ago") is left alone.
+function friendlyDate(s) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})(?:[T ].*)?$/.exec(String(s || '').trim());
+  if (!m) return s;
+  const d = new Date(+m[1], +m[2] - 1, +m[3]);
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const days = Math.round((today - d) / 86400000);
+  if (days < 0) return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+  if (days === 0) return 'Today';
+  if (days === 1) return 'Yesterday';
+  if (days < 14) return `${days} days ago`;
+  if (days < 60) return `${Math.round(days / 7)} weeks ago`;
+  return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+}
+// "Pittsburgh, Pennsylvania, United States" -> "Pittsburgh, Pennsylvania" for display only.
+const shortLocation = (s) => String(s || '').replace(/,\s*(?:United States(?: of America)?|USA|US)\s*$/i, '');
 
 // ---------- storage ----------
 const store = {
@@ -127,7 +149,172 @@ async function getTab() {
   const [tab] = await chrome.tabs.query(q);
   return tab;
 }
-const keyFor = (tab) => (tab ? `${tab.id}|${tab.url}` : '');
+// LinkedIn mutates query params when you click Apply. Key by job id so the score survives.
+function stableTabKey(tab) {
+  if (!tab || !tab.url) return '';
+  try {
+    const u = new URL(tab.url);
+    const host = u.hostname.replace(/^www\./, '');
+    if (/linkedin\.com$/.test(host)) {
+      const id = u.searchParams.get('currentJobId') || (u.pathname.match(/\/jobs\/view\/(?:[^/]*?-)?(\d+)/) || [])[1] || '';
+      if (id) return `${tab.id}|li:${id}`;
+    }
+    if (/greenhouse\.io$/.test(host)) {
+      const m = u.pathname.match(/\/([^/]+)\/jobs\/(\d+)/);
+      if (m) return `${tab.id}|gh:${m[1]}:${m[2]}`;
+    }
+    if (/lever\.co$/.test(host)) {
+      const parts = u.pathname.split('/').filter(Boolean);
+      if (parts.length >= 2) return `${tab.id}|lv:${parts[0]}:${parts[parts.length - 1]}`;
+    }
+    if (/ashbyhq\.com$/.test(host)) {
+      const parts = u.pathname.split('/').filter(Boolean);
+      if (parts.length >= 2) return `${tab.id}|ab:${parts.join('/')}`;
+    }
+    for (const k of [...u.searchParams.keys()]) if (TRACKING_PARAMS.test(k)) u.searchParams.delete(k);
+    u.hash = '';
+    return `${tab.id}|${u.origin}${u.pathname.replace(/\/+$/, '') || '/'}${u.search}`;
+  } catch (e) {
+    return `${tab.id}|${tab.url}`;
+  }
+}
+const keyFor = (tab) => stableTabKey(tab);
+
+function normalizeJobLink(href) {
+  if (!href) return '';
+  try {
+    const u = new URL(href);
+    for (const k of [...u.searchParams.keys()]) if (TRACKING_PARAMS.test(k) || k === 'ref') u.searchParams.delete(k);
+    u.hash = '';
+    return (u.origin + u.pathname.replace(/\/+$/, '')).toLowerCase();
+  } catch (e) { return String(href).trim().toLowerCase(); }
+}
+function normCompany(s) {
+  return String(s || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+}
+function boardIdsFromUrl(href) {
+  const keys = [];
+  if (!href) return keys;
+  try {
+    const u = new URL(href);
+    const host = u.hostname.replace(/^www\./, '');
+    if (/linkedin\.com$/.test(host)) {
+      const id = u.searchParams.get('currentJobId') || (u.pathname.match(/\/jobs\/view\/(?:[^/]*?-)?(\d+)/) || [])[1] || '';
+      if (id) keys.push('li:' + id);
+    }
+    if (/greenhouse\.io$/.test(host)) {
+      const m = u.pathname.match(/\/([^/]+)\/jobs\/(\d+)/);
+      if (m) keys.push('gh:' + m[1] + ':' + m[2]);
+    }
+    if (/lever\.co$/.test(host)) {
+      const parts = u.pathname.split('/').filter(Boolean);
+      if (parts.length >= 2) keys.push('lv:' + parts[0] + ':' + parts[parts.length - 1]);
+    }
+    if (/ashbyhq\.com$/.test(host)) {
+      const parts = u.pathname.split('/').filter(Boolean);
+      if (parts.length >= 2) keys.push('ab:' + parts.join('/'));
+    }
+  } catch (e) { /* ignore */ }
+  return keys;
+}
+function jobKeys(job, tab) {
+  if (!job) return [];
+  const keys = [];
+  const link = normalizeJobLink(job.link);
+  if (link) keys.push('link:' + link);
+  for (const k of boardIdsFromUrl(job.link)) keys.push(k);
+  if (tab && tab.url) for (const k of boardIdsFromUrl(tab.url)) keys.push(k);
+  const co = normCompany(job.company);
+  const role = String(job.role || '').toLowerCase().replace(/\s+/g, ' ').trim();
+  if (co && role) keys.push('cr:' + co + '|' + role);
+  return [...new Set(keys)];
+}
+function rememberVerdict(job, verdict, meta, notion, state) {
+  if (!verdict || !job) return;
+  const entry = {
+    verdict, meta: meta || null, notionPage: notion || null, notionState: state || null, savedAt: Date.now(),
+    job: { company: job.company || '', role: job.role || '', link: job.link || '' }
+  };
+  for (const k of jobKeys(job, activeTab)) byJob.set(k, entry);
+  while (byJob.size > 60) {
+    let oldest = null; let oldestAt = Infinity;
+    for (const [k, v] of byJob) if ((v.savedAt || 0) < oldestAt) { oldestAt = v.savedAt || 0; oldest = k; }
+    if (oldest == null) break;
+    byJob.delete(oldest);
+  }
+  pushRecent(job, verdict);
+  persistRemembered();
+}
+function pushRecent(job, verdict) {
+  if (!job || !verdict || typeof verdict.score !== 'number') return;
+  const link = normalizeJobLink(job.link) || `${normCompany(job.company)}|${String(job.role || '').toLowerCase()}`;
+  const item = {
+    company: job.company || 'Unknown',
+    role: job.role || 'Untitled',
+    link: job.link || '',
+    score: verdict.score,
+    band: bandFor(verdict.score),
+    savedAt: Date.now(),
+    key: link
+  };
+  recents = [item, ...recents.filter((r) => r.key !== item.key)].slice(0, 12);
+  try { chrome.storage.session.set({ [SESSION_RECENTS]: recents }).catch(() => {}); } catch (e) { /* harness */ }
+  renderRecents();
+}
+function renderRecents() {
+  const card = $('#recentCard');
+  const list = $('#recentList');
+  if (!card || !list) return;
+  if (!recents.length) { card.hidden = true; list.innerHTML = ''; return; }
+  card.hidden = false;
+  list.innerHTML = recents.map((r) => {
+    const href = r.link ? esc(r.link) : '#';
+    return `<a class="recent-row ${esc(r.band || '')}" href="${href}" target="_blank" rel="noopener" title="Open job">
+      <span class="recent-score">${esc(String(r.score))}%</span>
+      <span class="recent-meta"><div class="recent-role">${esc(r.role)}</div><div class="recent-co">${esc(r.company)}</div></span>
+    </a>`;
+  }).join('');
+}
+function findRemembered(job, tab) {
+  for (const k of jobKeys(job, tab || activeTab)) {
+    const hit = byJob.get(k);
+    if (hit && hit.verdict) return hit;
+  }
+  // Soft match: same role, company slug overlap (Scale / Scaleai / Scale AI).
+  const role = String(job && job.role || '').toLowerCase().replace(/\s+/g, ' ').trim();
+  const co = normCompany(job && job.company);
+  if (!role || !co) return null;
+  for (const [k, v] of byJob) {
+    if (!k.startsWith('cr:') || !v || !v.verdict) continue;
+    const rest = k.slice(3);
+    const i = rest.indexOf('|');
+    if (i < 0) continue;
+    const co2 = rest.slice(0, i);
+    const role2 = rest.slice(i + 1);
+    if (role2 !== role) continue;
+    if (co === co2 || co.includes(co2) || co2.includes(co)) return v;
+  }
+  return null;
+}
+let persistTimer = null;
+function persistRemembered() {
+  clearTimeout(persistTimer);
+  persistTimer = setTimeout(() => {
+    const obj = {};
+    for (const [k, v] of byJob) obj[k] = v;
+    try { chrome.storage.session.set({ [SESSION_VERDICTS]: obj }).catch(() => {}); } catch (e) { /* harness */ }
+  }, 200);
+}
+async function loadRemembered() {
+  try {
+    const r = await chrome.storage.session.get([SESSION_VERDICTS, SESSION_RECENTS]);
+    const obj = r[SESSION_VERDICTS] || {};
+    for (const [k, v] of Object.entries(obj)) if (v && v.verdict) byJob.set(k, v);
+    if (Array.isArray(r[SESSION_RECENTS])) recents = r[SESSION_RECENTS];
+    renderRecents();
+  } catch (e) { /* session storage may be unavailable in harness */ }
+}
+
 // Tell the edge tab on the page what the score is (null clears it). Pages without the content script just ignore it.
 function pushScore(tabId, verdict) {
   if (tabId == null || !chrome.tabs.sendMessage) return;
@@ -143,17 +330,45 @@ function scoreResult(r) {
   if (r._debug && r._debug.jsonld) s += 5000;
   if (r._debug && r._debug.extractor !== 'generic') s += 5000;
   if (r._debug && r._debug.from_body) s -= 4000;
-  // reCAPTCHA / challenge iframes must never beat the real Ashby (or other ATS) frame.
-  if (/recaptcha|captcha|cloudflare|attention required|just a moment|enable javascript/i.test(r.role || '')) s -= 20000;
-  if (/recaptcha|captcha/i.test((r.jd || '').slice(0, 400)) && (r.jd || '').length < 800) s -= 10000;
+  if (r._debug && r._debug.extractor === 'ashby') s += 8000;
+  // reCAPTCHA / challenge iframes must never beat the real job frame (they can have huge body text).
+  const where = `${r.page_url || ''} ${r.link || ''} ${r.role || ''}`;
+  if (/google\.com\/recaptcha|recaptcha\.net|gstatic\.com\/recaptcha/i.test(where)) s -= 100000;
+  if (/recaptcha|captcha|cloudflare|attention required|just a moment|enable javascript/i.test(r.role || '')) s -= 50000;
+  if (/recaptcha|captcha/i.test(r.jd || '')) s -= 30000;
   return s;
 }
 
 async function extractFromTab(tab) {
   if (!tab || !/^https?:/.test(tab.url || '')) throw Object.assign(new Error('This tab is not a web page. Open a job posting and the panel will read it.'), { empty: true });
+  // Ashby stores the posting on page-world window.__appData. Isolated content scripts cannot
+  // see it, so copy it from MAIN world first and hand it to the extractor.
+  let ashbyAppData = null;
+  try {
+    const main = await chrome.scripting.executeScript({
+      target: { tabId: tab.id },
+      world: 'MAIN',
+      func: () => {
+        try { return window.__appData || null; } catch (e) { return null; }
+      }
+    });
+    ashbyAppData = main && main[0] && main[0].result;
+  } catch (e) { /* page may block MAIN-world injection */ }
+
   const run = async (allFrames) => {
     await chrome.scripting.executeScript({ target: { tabId: tab.id, allFrames }, files: ['extractor.js'] });
-    return chrome.scripting.executeScript({ target: { tabId: tab.id, allFrames }, func: () => (window.__jdFillerExtract ? window.__jdFillerExtract() : null) });
+    return chrome.scripting.executeScript({
+      target: { tabId: tab.id, allFrames },
+      args: [ashbyAppData],
+      func: (payload) => {
+        try {
+          if (payload && payload.posting && !/google\.|gstatic\.|recaptcha/i.test(location.hostname)) {
+            window.__jdFillerAppData = payload;
+          }
+        } catch (e) { /* ignore */ }
+        return window.__jdFillerExtract ? window.__jdFillerExtract() : null;
+      }
+    });
   };
   let results;
   try { results = await run(true); } catch (e) { results = await run(false); }
@@ -206,23 +421,67 @@ function avatarColor(name) {
 }
 function renderHero(job) {
   const co = (job.company || '').trim();
+  const coUrl = (job.company_url || '').trim();
   $('#h_role').textContent = job.role || 'No title found';
-  $('#h_company').textContent = co;
-  $('#h_location').textContent = job.location || '';
+  const coEl = $('#h_company');
+  if (co && coUrl) {
+    coEl.innerHTML = `<a class="co-link" href="${esc(coUrl)}" target="_blank" rel="noopener" title="Open company page">${esc(co)}</a>`;
+  } else {
+    coEl.textContent = co;
+  }
+  $('#h_location').textContent = shortLocation(job.location);
+  $('#h_location').title = job.location || '';
   $('#h_sep').hidden = !(co && job.location);
   const av = $('#h_avatar');
-  av.textContent = (co.match(/[A-Za-z0-9]/) || ['?'])[0].toUpperCase();
-  av.style.setProperty('--av', co ? avatarColor(co) : '');
+  const logo = (job.logo || '').trim();
+  av.onclick = null;
+  av.removeAttribute('href');
+  av.removeAttribute('role');
+  av.removeAttribute('tabindex');
+  av.title = '';
+  if (logo) {
+    av.classList.add('has-img');
+    av.style.removeProperty('--av');
+    av.innerHTML = `<img src="${esc(logo)}" alt="" referrerpolicy="no-referrer">`;
+    const img = av.querySelector('img');
+    if (img) {
+      img.addEventListener('error', () => {
+        av.classList.remove('has-img');
+        av.innerHTML = '';
+        av.textContent = (co.match(/[A-Za-z0-9]/) || ['?'])[0].toUpperCase();
+        av.style.setProperty('--av', co ? avatarColor(co) : '');
+      }, { once: true });
+    }
+  } else {
+    av.classList.remove('has-img');
+    av.innerHTML = '';
+    av.textContent = (co.match(/[A-Za-z0-9]/) || ['?'])[0].toUpperCase();
+    av.style.setProperty('--av', co ? avatarColor(co) : '');
+  }
+  if (coUrl) {
+    av.classList.add('clickable');
+    av.title = 'Open company page';
+    av.setAttribute('role', 'link');
+    av.tabIndex = 0;
+    av.onclick = () => chrome.tabs.create({ url: coUrl });
+    av.onkeydown = (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); chrome.tabs.create({ url: coUrl }); } };
+  } else {
+    av.classList.remove('clickable');
+    av.onkeydown = null;
+  }
   const chips = [];
   const modeIcon = { Remote: 'globe', Hybrid: 'home', 'On-site': 'building' };
   if (job.work_mode && job.work_mode !== 'Unknown') chips.push([modeIcon[job.work_mode] || 'pin', job.work_mode]);
   if (job.job_type && job.job_type !== 'Unknown') chips.push(['bag', job.job_type]);
   const sal = shortSalary(job.salary); if (sal) chips.push(['money', sal]);
   if (job.experience && job.experience !== 'Not stated') chips.push(['ladder', job.experience]);
-  if (job.posted) chips.push(['clock', job.posted]);
+  if (job.posted) chips.push(['clock', friendlyDate(job.posted)]);
   if (job.applicants) chips.push(['users', job.applicants]);
   const sp = job.sponsorship === 'Sponsors' ? ['Sponsors visa', 'apply'] : job.sponsorship === 'No sponsorship' ? ['No sponsorship', 'maybe'] : null;
-  $('#h_chips').innerHTML = (sp ? `<span class="chip ${sp[1]}">${ico('shield')}${esc(sp[0])}</span>` : '') + chips.map(([i, c]) => `<span class="chip">${ico(i)}${esc(c)}</span>`).join('');
+  const tracker = notionPage
+    ? `<span class="chip apply">${ico('check')}${notionPage.url ? `<a href="${esc(notionPage.url)}" target="_blank" rel="noopener">In tracker</a>` : 'In tracker'}</span>`
+    : '';
+  $('#h_chips').innerHTML = tracker + (sp ? `<span class="chip ${sp[1]}">${ico('shield')}${esc(sp[0])}</span>` : '') + chips.map(([i, c]) => `<span class="chip">${ico(i)}${esc(c)}</span>`).join('');
   const q = encodeURIComponent;
   $('#research').hidden = !co;
   $('#r_company').textContent = co;
@@ -316,7 +575,8 @@ function setScore(state, v) {
   requestAnimationFrame(() => { fill.style.strokeDashoffset = RING_C * (1 - v.score / 100); });
   $('#scoreBand').textContent = `${bandWord[band]}`;
   $('#scoreReason').textContent = v.reason || '';
-  facts.innerHTML = [said(v.level), said(v.job_type), said(v.years_asked) && `asks ${said(v.years_asked)}`, said(v.pay)].filter(Boolean).map((t) => `<span>${esc(t)}</span>`).join('');
+  // Job type is already a chip in the job card, so it is not repeated here.
+  facts.innerHTML = [said(v.level), said(v.years_asked) && `asks ${said(v.years_asked)}`, said(v.pay)].filter(Boolean).map((t) => `<span>${esc(t)}</span>`).join('');
   $('#checkLabel').textContent = 'Check again';
 }
 
@@ -359,7 +619,7 @@ function verdictHtml(v, meta) {
   if (flags.length) {
     blocks.push(`<section class="card block flagged reveal"><div class="block-title">Red flags<span class="count">${flags.length}</span></div><ul class="flags">${flags.map((f) => `<li>${esc(f)}</li>`).join('')}</ul></section>`);
   }
-  if (meta) blocks.push(`<div class="meta">${esc(meta.model)} · ${esc(meta.effort || (meta.deep ? 'xhigh' : 'medium'))} · ${(meta.ms / 1000).toFixed(1)}s · ${Number(meta.input).toLocaleString()} in / ${Number(meta.output).toLocaleString()} out${meta.cache_read ? ' · cache hit' : meta.cache_write ? ' · cache written' : ''}</div>`);
+  if (meta) blocks.push(`<div class="meta">${esc(meta.model)} · ${(meta.ms / 1000).toFixed(1)}s · ${Number(meta.input).toLocaleString()} in / ${Number(meta.output).toLocaleString()} out${meta.cache_read ? ' · cache hit' : meta.cache_write ? ' · cache written' : ''}</div>`);
   return blocks.join('');
 }
 
@@ -422,6 +682,112 @@ function stripForApi(job) {
   return j;
 }
 
+// ---------- autofill ----------
+async function doAutofill() {
+  const tab = await getTab();
+  if (!tab || !/^https?:/.test(tab.url || '')) { toast('Open an application form first'); return; }
+  const btn = $('#autofill');
+  const label = $('#autofillLabel');
+  btn.disabled = true;
+  label.textContent = 'Filling…';
+  try {
+    const { profile } = await chrome.storage.local.get('profile');
+    if (!profile || !profile.name) { toast('Open Profile and save your details first'); return; }
+    const values = buildAutofillValues(profile);
+    await chrome.scripting.executeScript({ target: { tabId: tab.id, allFrames: true }, files: ['autofill.js'] });
+    const results = await chrome.scripting.executeScript({
+      target: { tabId: tab.id, allFrames: true },
+      args: [values],
+      func: (vals) => (window.__jdFillerAutofill ? window.__jdFillerAutofill(vals) : null)
+    });
+    let filled = 0; let unknown = [];
+    for (const r of results || []) {
+      if (!r || !r.result) continue;
+      filled += r.result.filled || 0;
+      if (r.result.details && r.result.details.unknown) unknown = unknown.concat(r.result.details.unknown);
+    }
+
+    // Phase 2: Claude answers leftover open questions, then we fill those fields by label.
+    const settings = await store.getSettings();
+    if (unknown.length && settings.anthropicKey) {
+      label.textContent = 'Answering…';
+      const job = read();
+      const res = await send({
+        type: 'claude.autofillAnswers',
+        questions: unknown.slice(0, 12).map((u) => u.label).filter(Boolean),
+        job: stripForApi(job)
+      });
+      if (res && res.ok && res.answers && res.answers.length) {
+        const byLabel = {};
+        for (const a of res.answers) if (a && a.question && a.answer) byLabel[a.question] = a.answer;
+        const rows = await chrome.scripting.executeScript({
+          target: { tabId: tab.id, allFrames: true },
+          args: [byLabel],
+          func: (answers) => {
+            const nodes = Array.from(document.querySelectorAll('textarea, input[type="text"], input:not([type])'));
+            let n = 0;
+            for (const [q, ans] of Object.entries(answers)) {
+              const qn = q.toLowerCase().replace(/\s+/g, ' ').trim().slice(0, 80);
+              for (const el of nodes) {
+                if (el.disabled || el.readOnly) continue;
+                const wrap = el.closest('label, .field, .form-group, [class*="question"]');
+                const lab = [
+                  el.getAttribute('aria-label'), el.placeholder, el.name, el.id,
+                  wrap && (wrap.innerText || '')
+                ].filter(Boolean).join(' ').toLowerCase().replace(/\s+/g, ' ');
+                if (!lab.includes(qn.slice(0, 40)) && !qn.includes(lab.slice(0, 40))) continue;
+                const proto = el.tagName === 'TEXTAREA' ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
+                const desc = Object.getOwnPropertyDescriptor(proto, 'value');
+                if (desc && desc.set) desc.set.call(el, ans); else el.value = ans;
+                el.dispatchEvent(new Event('input', { bubbles: true }));
+                el.dispatchEvent(new Event('change', { bubbles: true }));
+                n++;
+                break;
+              }
+            }
+            return n;
+          }
+        });
+        for (const row of rows || []) filled += (row && row.result) || 0;
+      }
+    }
+
+    if (filled) toast(`Autofilled ${filled} field${filled === 1 ? '' : 's'} - review, then submit`);
+    else toast('No matching fields on this page. Open the Apply form, then try again.');
+  } catch (e) {
+    toast(e.message || String(e));
+  } finally {
+    btn.disabled = false;
+    label.textContent = 'Autofill';
+  }
+}
+
+async function doTailorResume() {
+  const job = read();
+  if (!job.role && !job.jd) { toast('Read a job first'); return; }
+  toast('Tailoring resume…');
+  try {
+    const res = await send({ type: 'claude.tailorResume', job: stripForApi(job) });
+    if (!res || !res.ok || !res.resume) throw new Error((res && res.error) || 'No resume returned');
+    const r = res.resume;
+    const text = [
+      r.title || job.role,
+      '',
+      r.summary || '',
+      '',
+      'Selected bullets',
+      ...(r.bullets || []).map((b) => `• ${b}`),
+      '',
+      'Skills',
+      r.skills_line || '',
+      r.notes ? `\nNotes: ${r.notes}` : ''
+    ].filter((l) => l !== undefined).join('\n').trim();
+    await copy(text, 'Tailored resume copied');
+  } catch (e) {
+    toast(e.message || String(e));
+  }
+}
+
 // ---------- Notion ----------
 function notionLine(html, cls) {
   notionState = html ? { html, cls: cls || '' } : null;
@@ -443,9 +809,11 @@ async function logToNotion(auto) {
     if (res.exists) {
       notionLine(`Already in your tracker. ${link}`, 'ok');
     } else {
-      notionLine(`Logged to Notion. ${link} <button id="undoNotion" class="btn ghost danger">Undo</button>`, 'ok');
+      notionLine(`Logged to Notion · Stage Applied. ${link} <button id="undoNotion" class="btn ghost danger">Undo</button>`, 'ok');
       toast('Logged to Notion');
     }
+    renderHero(read());
+    saveSnapshot();
   } catch (e) {
     notionLine(`<span class="err">Notion: ${esc(e.message)}</span> <button id="retryNotion" class="btn ghost">Retry</button>`, 'err');
   } finally {
@@ -530,7 +898,7 @@ async function loadSettings() {
   $('#s_autoCheck').checked = !!s.autoCheck;
   $('#deep').checked = !!s.deep;
   setSeg($('#depth'), 'depth', s.deep ? 'deep' : 'std');
-  setSeg($('#edgeTabSeg'), 'edge', s.edgeTab || 'jobs');
+  setSeg($('#edgeTabSeg'), 'edge', s.edgeTab || 'always');
   return s;
 }
 async function saveSettings() {
@@ -557,7 +925,9 @@ async function testKey(type, btn) {
 // ---------- per-tab snapshots ----------
 function saveSnapshot() {
   if (!activeTab || !current) return;
-  cache.set(keyFor(activeTab), { job: read(), verdict: lastVerdict, meta: lastMeta, notionPage, notionState, rules: lastRules });
+  const job = read();
+  cache.set(keyFor(activeTab), { job, verdict: lastVerdict, meta: lastMeta, notionPage, notionState, rules: lastRules });
+  if (lastVerdict) rememberVerdict(job, lastVerdict, lastMeta, notionPage, notionState);
   if (cache.size > 40) cache.delete(cache.keys().next().value);
 }
 function resetJobView() {
@@ -603,11 +973,23 @@ async function loadActiveTab(force) {
     fill(job);
     setStatus(`Read from ${job.source}`, 'on');
     runRules();
-    pushScore(tab.id, null);
+    // Keep a prior Check fit when LinkedIn mutates the URL on Apply, or when the
+    // same posting opens on Greenhouse / Lever after the external Apply click.
+    const remembered = findRemembered(job, activeTab);
+    if (remembered && remembered.verdict) {
+      lastVerdict = normalizeVerdict(remembered.verdict);
+      lastMeta = remembered.meta || null;
+      if (remembered.notionPage) notionPage = remembered.notionPage;
+      if (remembered.notionState) notionLine(remembered.notionState.html, remembered.notionState.cls);
+      showVerdict(lastVerdict, lastMeta);
+      pushScore(tab.id, lastVerdict);
+    } else {
+      pushScore(tab.id, null);
+    }
     saveSnapshot();
     checkAlreadyLogged(job.link, keyFor(activeTab));
     const s = await store.getSettings();
-    if (s.autoCheck && s.anthropicKey && (job.jd || job.role)) doCheck();
+    if (!lastVerdict && s.autoCheck && s.anthropicKey && (job.jd || job.role)) doCheck();
   } catch (e) {
     if (seq !== loadSeq) return;
     if (e.empty) { showEmpty(e.message); setStatus('No job on this tab'); }
@@ -645,23 +1027,40 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // The panel lives in one window. Tell the background so the edge tab can show "open", and follow that window's tabs.
   try { if (chrome.windows) windowId = (await chrome.windows.getCurrent()).id; } catch (e) { /* harness */ }
-  try { if (windowId != null && chrome.runtime.connect) chrome.runtime.connect({ name: `panel:${windowId}` }); } catch (e) { /* harness */ }
+  try {
+    if (windowId != null && chrome.runtime.connect) {
+      const port = chrome.runtime.connect({ name: `panel:${windowId}` });
+      // Another extension can take over the side panel and leave this page alive but hidden.
+      const report = () => { try { port.postMessage({ visible: document.visibilityState === 'visible' }); } catch (e) { /* port closed */ } };
+      document.addEventListener('visibilitychange', report);
+      report();
+    }
+  } catch (e) { /* harness */ }
   if (chrome.tabs.onActivated) {
     chrome.tabs.onActivated.addListener((info) => { if (windowId == null || info.windowId === windowId) loadActiveTab(); });
     let t = null;
     chrome.tabs.onUpdated.addListener((tabId, change) => {
       if (!activeTab || tabId !== activeTab.id) return;
       // SPAs (LinkedIn) change the URL first and render the new job a moment later.
-      if (change.url && change.url !== activeTab.url) { clearTimeout(t); t = setTimeout(() => loadActiveTab(), 900); }
-      else if (change.status === 'complete' && document.body.classList.contains('empty')) { clearTimeout(t); t = setTimeout(() => loadActiveTab(true), 300); }
+      // Apply clicks also rewrite tracking params on the same job - keep the score.
+      if (change.url && change.url !== activeTab.url) {
+        const next = { id: activeTab.id, url: change.url };
+        if (keyFor(next) === keyFor(activeTab)) { activeTab = next; return; }
+        clearTimeout(t); t = setTimeout(() => loadActiveTab(), 900);
+      } else if (change.status === 'complete' && document.body.classList.contains('empty')) {
+        clearTimeout(t); t = setTimeout(() => loadActiveTab(true), 300);
+      }
     });
-    chrome.tabs.onRemoved.addListener((tabId) => { for (const k of cache.keys()) if (k.startsWith(tabId + '|')) cache.delete(k); });
+    chrome.tabs.onRemoved.addListener((tabId) => {
+      for (const k of cache.keys()) if (k.startsWith(tabId + '|')) cache.delete(k);
+    });
   }
 
   $('#openSettings').addEventListener('click', () => showView('settings'));
   $('#closeSettings').addEventListener('click', () => showView('job'));
   $('#check').addEventListener('click', doCheck);
   $('#ringBtn').addEventListener('click', () => { if (!$('#check').disabled) doCheck(); });
+  $('#autofill').addEventListener('click', doAutofill);
   $('#depth').addEventListener('click', (e) => {
     const b = e.target.closest('button'); if (!b) return;
     const deep = b.dataset.depth === 'deep';
@@ -694,6 +1093,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   });
 
   $('#logNotion').addEventListener('click', () => logToNotion(false));
+  $('#tailorResume').addEventListener('click', doTailorResume);
   $('#copyResume').addEventListener('click', () => copy(resumePrompt(read()), 'Resume prompt copied'));
   $('#copy').addEventListener('click', async () => copy(render(await store.getTemplate(), read()), 'Copied: facts + JD'));
   $('#copyFacts').addEventListener('click', async () => copy(render(factsTemplate(await store.getTemplate()), read()), 'Facts copied'));
@@ -715,5 +1115,6 @@ document.addEventListener('DOMContentLoaded', async () => {
   $('#openProfile').addEventListener('click', () => chrome.runtime.openOptionsPage());
   try { const { profile } = await chrome.storage.local.get('profile'); const sch = profile && profile.education && profile.education[0] && profile.education[0].school; if (sch) SCHOOL = sch; } catch (e) { /* ignore */ }
   await loadSettings();
+  await loadRemembered();
   await loadActiveTab();
 });

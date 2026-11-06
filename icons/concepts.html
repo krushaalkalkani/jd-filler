@@ -1,0 +1,17 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>JD Filler - logo concepts</title>
+<style>
+  body { margin: 0; font: 13px -apple-system, system-ui, sans-serif; color: #0f172a; background: #f5f6f8; }
+  .c { display: grid; grid-template-columns: 110px 1fr 1fr; align-items: center; gap: 0; }
+  .name { padding: 0 18px; font-weight: 700; font-size: 15px; }
+  .row { display: flex; gap: 20px; align-items: flex-end; padding: 14px 20px; }
+  .dark { background: #202124; }
+  .c + .c { border-top: 1px solid #e2e8f0; }
+  img.px { image-rendering: auto; }
+</style></head><body>
+<div id="out"></div>
+<script>
+const C = [['A · Gauge J', 'concepts/a-gauge.svg'], ['B · Signal', 'concepts/b-tab.svg'], ['C · jd ring', 'concepts/c-jd.svg']];
+document.getElementById('out').innerHTML = C.map(([n, f]) => `<div class="c"><div class="name">${n}</div>` +
+  ['', 'dark'].map((cls) => `<div class="row ${cls}">${[16, 32, 48, 128].map((s) => `<img src="${f}" width="${s}" height="${s}">`).join('')}</div>`).join('') + '</div>').join('');
+</script></body></html>

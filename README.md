@@ -7,7 +7,7 @@ Personal Chrome extension that lives in Chrome's **side panel**. Open a job post
 3. **A Claude apply score** (0 to 100) with fit, what to lead with, what not to claim, and the next action. 70 and up means apply, 40 to 69 is a maybe, under 40 is a skip.
 4. **A row in your Notion Application Tracker**, created automatically when the score reaches your threshold (default 70, or by hand), with Undo.
 
-Plus: a **Profile page** (name, address, links, education, experience, skills by honesty level, EEO answers, each with a copy button) that also feeds Claude; **insider links** per company (H-1B history, alumni from your school, recruiters, Glassdoor, E-Verify); **ATS keywords** and a **resume-tailoring prompt**; Copy (template).
+Plus: a **Profile page** (name, address, links, education, experience, skills by honesty level, EEO answers, each with a copy button) that also feeds Claude; **Autofill** on application forms from the side panel or the edge-tab hover control (Greenhouse, Lever, Ashby, Workday, and most company sites - profile fields first, then Claude for leftover open questions in the panel flow; you still press Submit); **Recent scores** for this browser session; **Tailor resume** (Claude → clipboard); **insider links** per company (H-1B history, alumni from your school, recruiters, Glassdoor, E-Verify); **ATS keywords**; Copy (template).
 
 ## Install
 
@@ -71,12 +71,12 @@ Switching tabs swaps the panel to that tab's job. Each tab's job, score and Noti
 
 ## The edge tab
 
-`edge-tab.js` is a content script that pins a small dark tab to the right edge of job pages (known job boards and ATS hosts, URLs with /jobs or /careers, or any page with `JobPosting` JSON-LD). It lives in a closed shadow root, so the page's CSS cannot restyle it.
+`edge-tab.js` is a content script that pins a small white shortcut card (the logo plus a grip strip) to the right edge of job pages and application forms: known job boards and ATS hosts, URLs with /jobs, /careers, /apply or /application, pages with `JobPosting` JSON-LD, and forms with a resume / CV upload field. It lives in a closed shadow root, so the page's CSS cannot restyle it.
 
-- **Click** opens the side panel; click again closes it (Chrome 141+). The tab turns indigo while the panel is open.
-- After a check, the tab shows the score with a coloured ring around the logo, so you can see the result without opening the panel. Hover for "82% apply".
+- **Click** opens the side panel; click again closes it (Chrome 141+). The grip strip turns indigo while the panel is open.
+- After a check, the card shows the score as a coloured pill and the ring in the logo fills to the score, so you can see the result without opening the panel. Hover for "82% apply".
 - **Drag** it up or down; the position is remembered. The small **×** hides it on that page until the next load.
-- Settings → **Edge tab on web pages**: Job pages (default), Everywhere, or Off.
+- Settings → **Edge tab on web pages**: Everywhere (default), Job pages, or Off. On install or reload it is also added to tabs that are already open, so you do not have to refresh them.
 
 The OPT counter in the header is computed in code: day 1 = 2026-09-12, limit 90 days. Change `OPT_START` in `sidepanel.js` if your EAD date differs.
 
@@ -126,6 +126,7 @@ Fixtures: real captures of a Greenhouse page, a LinkedIn guest job view, a Workd
 - `background.js` - service worker: Claude verdict, Notion query / create / trash, key tests, side panel open / close and open-state tracking
 - `sidepanel.html` / `sidepanel.css` / `sidepanel.js` - side panel UI
 - `edge-tab.js` - the edge tab content script
+- `icons/logo.svg` (48 and 128 px) / `icons/logo-small.svg` (16 and 32 px) - logo sources; `icons/render.html` previews them at every size. The PNGs are rendered from these SVGs with headless Chrome
 - `profile.html` / `profile.css` / `profile.js` - profile page (options page)
 - `test-sidepanel.html` / `test-edge-tab.html` / `test-profile.html` - UI smoke tests with a fake chrome API
 - `fixtures/`, `test-extract.html` - extractor tests

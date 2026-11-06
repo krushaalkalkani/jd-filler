@@ -4,6 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>JD Filler</title>
+  <link rel="icon" href="icons/icon32.png">
   <link rel="stylesheet" href="sidepanel.css">
 </head>
 <body>
@@ -14,9 +15,7 @@
         <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M12.5 4.5 7 10l5.5 5.5"/></svg>
       </button>
       <div class="brand" id="brand">
-        <span class="mark" aria-hidden="true">
-          <svg viewBox="0 0 24 24"><path d="M9 4.5v9.25a3.25 3.25 0 0 1-6.1 1.56"/><path d="M13.5 4.5H16a6 6 0 0 1 0 12h-2.5z"/></svg>
-        </span>
+        <img class="mark" src="icons/logo-small.svg" width="30" height="30" alt="" aria-hidden="true">
         <div class="brand-text">
           <div class="brand-name" id="viewTitle">JD Filler</div>
           <div class="brand-sub"><span class="live" id="liveDot" aria-hidden="true"></span><span id="status">Reading page…</span></div>
@@ -100,6 +99,12 @@
       <section class="card research" id="research" hidden>
         <div class="card-head"><h3>Research <span id="r_company"></span></h3></div>
         <div class="link-grid" id="h_links"></div>
+      </section>
+
+      <!-- Recent scored jobs (this browser session) -->
+      <section class="card recent" id="recentCard" hidden>
+        <div class="card-head"><h3>Recent scores</h3><span class="sum-hint">this session</span></div>
+        <div class="recent-list" id="recentList"></div>
       </section>
 
       <!-- Editable fields -->
@@ -190,8 +195,8 @@
       <div class="field toggle col">
         <span>Edge tab on web pages <small>The tab pinned to the right edge that opens this panel.</small></span>
         <div class="seg full" role="radiogroup" id="edgeTabSeg">
-          <button role="radio" data-edge="jobs">Job pages</button>
           <button role="radio" data-edge="always">Everywhere</button>
+          <button role="radio" data-edge="jobs">Job pages</button>
           <button role="radio" data-edge="off">Off</button>
         </div>
       </div>
@@ -222,7 +227,11 @@
   <footer class="actionbar" id="bar">
     <div id="notion" class="notion" role="status"></div>
     <div class="actionbar-row">
-      <button id="copy" class="btn primary grow">
+      <button id="autofill" class="btn primary grow" title="Fill the application form on this tab from your profile. You still submit.">
+        <svg class="btn-ico" viewBox="0 0 20 20" aria-hidden="true"><path d="M4 5h12v2H4zm0 4h12v2H4zm0 4h8v2H4z"/><path d="m14 13 2 2 3-4"/></svg>
+        <span id="autofillLabel">Autofill</span>
+      </button>
+      <button id="copy" class="btn secondary grow">
         <svg class="btn-ico" viewBox="0 0 20 20" aria-hidden="true"><rect x="6.5" y="6.5" width="10" height="10" rx="2"/><path d="M13.5 4.5v-.5a1.5 1.5 0 0 0-1.5-1.5H5A1.5 1.5 0 0 0 3.5 4v7A1.5 1.5 0 0 0 5 12.5h.5"/></svg>
         Copy job
       </button>
@@ -235,6 +244,7 @@
           <svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="5" cy="10" r="1.3"/><circle cx="10" cy="10" r="1.3"/><circle cx="15" cy="10" r="1.3"/></svg>
         </button>
         <div class="menu" id="moreMenu" role="menu" hidden>
+          <button role="menuitem" id="tailorResume">Tailor resume (Claude)</button>
           <button role="menuitem" id="copyResume">Copy resume prompt</button>
           <button role="menuitem" id="copyFacts">Copy facts only</button>
           <button role="menuitem" id="copyJson">Copy as JSON</button>
@@ -245,6 +255,7 @@
 
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
   <script src="rules.js"></script>
+  <script src="autofill-values.js"></script>
   <script src="sidepanel.js"></script>
 </body>
 </html>

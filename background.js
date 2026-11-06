@@ -1,5 +1,6 @@
 // background.js - MV3 service worker. The only place that talks to api.anthropic.com and api.notion.com.
 // Keys live in chrome.storage.local and never leave this worker except in the Authorization headers.
+try { importScripts('autofill-values.js'); } catch (e) { /* harness / older Chrome */ }
 
 const ANTHROPIC_URL = 'https://api.anthropic.com/v1';
 const NOTION_URL = 'https://api.notion.com/v1';
@@ -225,6 +226,95 @@ async function claudeTest() {
   return { ok: true, message: `Key works. ${ids.length} models visible.${missing.length ? ' Missing: ' + missing.join(', ') : ''}` };
 }
 
+const AUTOFILL_ANSWERS_SCHEMA = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['answers'],
+  properties: {
+    answers: {
+      type: 'array',
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['question', 'answer'],
+        properties: {
+          question: { type: 'string' },
+          answer: { type: 'string' }
+        }
+      }
+    }
+  }
+};
+
+async function claudeAutofillAnswers({ questions, job }) {
+  const { anthropicKey } = await getSettings();
+  if (!anthropicKey) throw new ApiError('Add your Anthropic API key in Settings.', { code: 'no_key' });
+  const list = (questions || []).map((q) => String(q || '').trim()).filter(Boolean).slice(0, 12);
+  if (!list.length) return { answers: [] };
+  const { profile } = await chrome.storage.local.get('profile');
+  const body = {
+    model: MODELS.fast,
+    max_tokens: 1500,
+    system: [{
+      type: 'text',
+      text: `You answer job-application form questions for one candidate. Use ONLY the profile. Never invent employers, degrees, or skills marked NONE/Gap. Keep answers short (one sentence or a short paragraph). For Yes/No prefer Yes or No. For EEO decline questions, use the profile's decline wording.\n\n{{PROFILE}}`.replace('{{PROFILE}}', profileBlock(profile)),
+      cache_control: { type: 'ephemeral' }
+    }],
+    messages: [{
+      role: 'user',
+      content: `Job: ${(job && job.role) || ''} at ${(job && job.company) || ''}\n\nAnswer these form questions as JSON:\n${list.map((q, i) => `${i + 1}. ${q}`).join('\n')}`
+    }],
+    output_config: { format: { type: 'json_schema', schema: AUTOFILL_ANSWERS_SCHEMA }, effort: EFFORT.fast }
+  };
+  const res = await fetchJson(`${ANTHROPIC_URL}/messages`, { method: 'POST', headers: anthropicHeaders(anthropicKey), body: JSON.stringify(body) }, 'Claude');
+  const textBlock = (res.content || []).find((b) => b.type === 'text');
+  if (!textBlock) return { answers: [] };
+  try {
+    const parsed = JSON.parse(textBlock.text);
+    return { answers: Array.isArray(parsed.answers) ? parsed.answers : [] };
+  } catch (e) {
+    throw new ApiError('Claude returned invalid JSON for autofill answers.', { code: 'parse', retryable: true });
+  }
+}
+
+const RESUME_SCHEMA = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['title', 'summary', 'bullets', 'skills_line', 'notes'],
+  properties: {
+    title: { type: 'string' },
+    summary: { type: 'string' },
+    bullets: { type: 'array', items: { type: 'string' } },
+    skills_line: { type: 'string' },
+    notes: { type: 'string' }
+  }
+};
+
+async function claudeTailorResume({ job }) {
+  const { anthropicKey } = await getSettings();
+  if (!anthropicKey) throw new ApiError('Add your Anthropic API key in Settings.', { code: 'no_key' });
+  const { profile } = await chrome.storage.local.get('profile');
+  const body = {
+    model: MODELS.fast,
+    max_tokens: 1800,
+    system: [{
+      type: 'text',
+      text: `You tailor a resume for one candidate and ONE job. Use only PROVEN and SKILLS LIST items. Never add NONE skills. Rewrite bullets to mirror JD keywords truthfully. Keep summary under 60 words. Return 5-8 bullets.\n\n{{PROFILE}}`.replace('{{PROFILE}}', profileBlock(profile)),
+      cache_control: { type: 'ephemeral' }
+    }],
+    messages: [{ role: 'user', content: buildUserMessage(job, null) }],
+    output_config: { format: { type: 'json_schema', schema: RESUME_SCHEMA }, effort: EFFORT.fast }
+  };
+  const res = await fetchJson(`${ANTHROPIC_URL}/messages`, { method: 'POST', headers: anthropicHeaders(anthropicKey), body: JSON.stringify(body) }, 'Claude');
+  const textBlock = (res.content || []).find((b) => b.type === 'text');
+  if (!textBlock) throw new ApiError('Claude returned no resume text.', { code: 'empty', retryable: true });
+  try {
+    return { resume: JSON.parse(textBlock.text) };
+  } catch (e) {
+    throw new ApiError('Claude returned invalid resume JSON.', { code: 'parse', retryable: true });
+  }
+}
+
 // ---------- Notion ----------
 function notionHeaders(token) {
   return { 'content-type': 'application/json', Authorization: `Bearer ${token}`, 'Notion-Version': NOTION_VERSION };
@@ -369,42 +459,82 @@ async function notionTest() {
 // Toolbar button and Cmd+Shift+J open the side panel instead of a popup.
 function panelBehavior() { chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true }).catch(() => {}); }
 chrome.runtime.onInstalled.addListener(panelBehavior);
+
+// Do not reinject edge-tab.js into open tabs on install/reload. That left a fresh
+// copy next to the invalidated one; chrome.tabs.sendMessage then woke the zombie
+// and Chrome logged "Extension context invalidated". After Reload, refresh the page
+// once - the manifest content_scripts entry injects a clean copy.
 chrome.runtime.onStartup.addListener(panelBehavior);
 panelBehavior();
 
-// Each open panel holds a port named `panel:<windowId>`, so we know which windows have it open.
-const openPanels = new Set();
+// Each panel holds a port named `panel:<windowId>` and reports whether it is actually on screen. Chrome shows one
+// extension's side panel at a time: when another extension (Jobright, Simplify...) takes the side panel, our page
+// can stay alive but hidden, so "connected" alone does not mean "visible".
+const visiblePanels = new Set();
 function tellTabs(windowId, open) {
-  chrome.tabs.query({ windowId }).then((tabs) => {
+  // Prefer storage so a dead content-script listener is not invoked via sendMessage.
+  // The edge tab also listens for jdf.panel for same-tick UI updates on live pages.
+  chrome.storage.session.set({ [`panelOpen:${windowId}`]: !!open }).catch(() => {});
+  chrome.tabs.query({ windowId, active: true }).then((tabs) => {
     for (const t of tabs) chrome.tabs.sendMessage(t.id, { type: 'jdf.panel', open }).catch(() => {});
   }).catch(() => {});
+}
+function setVisible(windowId, visible) {
+  const was = visiblePanels.has(windowId);
+  if (visible) visiblePanels.add(windowId); else visiblePanels.delete(windowId);
+  if (was !== visible) tellTabs(windowId, visible);
 }
 chrome.runtime.onConnect.addListener((port) => {
   const m = /^panel:(\d+)$/.exec(port.name || '');
   if (!m) return;
   const windowId = Number(m[1]);
-  openPanels.add(windowId);
-  tellTabs(windowId, true);
-  port.onDisconnect.addListener(() => { openPanels.delete(windowId); tellTabs(windowId, false); });
+  setVisible(windowId, true);
+  port.onMessage.addListener((msg) => { if (msg && typeof msg.visible === 'boolean') setVisible(windowId, msg.visible); });
+  port.onDisconnect.addListener(() => setVisible(windowId, false));
 });
 
-// The edge tab on the page. sidePanel.open() needs the user's click, so it must run before any await.
+// The edge tab on the page always OPENS our panel (never closes): closing on a guess could shut another
+// extension's panel instead. sidePanel.open() needs the user's click, so it must run before any await.
 function edgeTabMessage(msg, sender, sendResponse) {
   const windowId = sender.tab && sender.tab.windowId;
   if (windowId == null) { sendResponse({ ok: false }); return; }
-  if (msg.type === 'jdf.panelState') { sendResponse({ ok: true, open: openPanels.has(windowId) }); return; }
-  if (openPanels.has(windowId) && chrome.sidePanel.close) {
-    chrome.sidePanel.close({ windowId }).then(() => sendResponse({ ok: true, open: false })).catch((e) => sendResponse({ ok: false, error: e.message }));
-  } else {
-    chrome.sidePanel.open({ windowId }).then(() => sendResponse({ ok: true, open: true })).catch((e) => sendResponse({ ok: false, error: e.message }));
-  }
+  if (msg.type === 'jdf.panelState') { sendResponse({ ok: true, open: visiblePanels.has(windowId) }); return; }
+  chrome.sidePanel.open({ windowId })
+    .then(() => sendResponse({ ok: true, open: true }))
+    .catch((e) => sendResponse({ ok: false, error: e.message }));
+}
+
+async function autofillTab(tabId) {
+  if (tabId == null) throw new ApiError('No tab to autofill.', { code: 'no_tab' });
+  const { profile } = await chrome.storage.local.get('profile');
+  if (!profile || !profile.name) throw new ApiError('Open Profile and save your details first.', { code: 'no_profile' });
+  if (typeof buildAutofillValues !== 'function') throw new ApiError('Autofill helper failed to load.', { code: 'no_helper' });
+  const values = buildAutofillValues(profile);
+  await chrome.scripting.executeScript({ target: { tabId, allFrames: true }, files: ['autofill.js'] });
+  const results = await chrome.scripting.executeScript({
+    target: { tabId, allFrames: true },
+    args: [values],
+    func: (vals) => (window.__jdFillerAutofill ? window.__jdFillerAutofill(vals) : null)
+  });
+  let filled = 0;
+  for (const r of results || []) if (r && r.result) filled += r.result.filled || 0;
+  return { filled };
 }
 
 // ---------- message router ----------
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg && (msg.type === 'jdf.togglePanel' || msg.type === 'jdf.panelState')) { edgeTabMessage(msg, sender, sendResponse); return true; }
+  if (msg && msg.type === 'jdf.autofill') {
+    const tabId = (sender.tab && sender.tab.id) || msg.tabId;
+    autofillTab(tabId)
+      .then((r) => sendResponse(Object.assign({ ok: true }, r)))
+      .catch((e) => sendResponse({ ok: false, error: e.message || String(e) }));
+    return true;
+  }
   const handlers = {
     'claude.verdict': () => claudeVerdict(msg),
+    'claude.autofillAnswers': () => claudeAutofillAnswers(msg),
+    'claude.tailorResume': () => claudeTailorResume(msg),
     'claude.test': () => claudeTest(),
     'notion.find': () => notionFind(msg.link).then((page) => ({ ok: true, page })),
     'notion.create': () => notionCreate(msg),

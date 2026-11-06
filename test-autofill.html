@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>JD Filler - autofill test</title>
+  <style>
+    body { font: 13px/1.4 system-ui, sans-serif; margin: 20px; max-width: 720px; color: #111; }
+    h1 { font-size: 18px; } h2 { font-size: 14px; margin-top: 24px; }
+    label { display: block; margin: 8px 0 4px; font-weight: 600; }
+    input, select, textarea { width: 100%; padding: 6px 8px; box-sizing: border-box; }
+    .row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .card { border: 1px solid #ddd; border-radius: 8px; padding: 14px; margin: 12px 0; }
+    #report { white-space: pre-wrap; background: #f6f7f9; padding: 10px; border-radius: 6px; font-size: 12px; }
+    .pass { color: #15803d; } .fail { color: #b91c1c; }
+    button { font: inherit; padding: 8px 12px; margin-right: 8px; }
+  </style>
+</head>
+<body>
+  <h1>Autofill harness</h1>
+  <p>Simulates Greenhouse / Lever / Workday / Ashby field labels. Run fills from a sample profile.</p>
+  <button id="run">Run autofill</button>
+  <button id="scan">Scan fields</button>
+  <div id="summary"></div>
+  <pre id="report"></pre>
+
+  <div class="card" id="gh">
+    <h2>Greenhouse-style</h2>
+    <div class="row">
+      <div><label for="gh_first">First Name</label><input id="gh_first" name="first_name"></div>
+      <div><label for="gh_last">Last Name</label><input id="gh_last" name="last_name"></div>
+    </div>
+    <label for="gh_email">Email</label><input id="gh_email" type="email" name="email">
+    <label for="gh_phone">Phone</label><input id="gh_phone" type="tel" name="phone">
+    <label for="gh_loc">Location (City)</label><input id="gh_loc" name="location">
+    <label for="gh_li">LinkedIn Profile</label><input id="gh_li" name="urls[LinkedIn]">
+    <label for="gh_gh">GitHub URL</label><input id="gh_gh" name="urls[GitHub]">
+    <label for="gh_web">Website</label><input id="gh_web" name="urls[Portfolio]">
+    <label for="gh_school">School</label><input id="gh_school" name="education_school">
+    <label for="gh_degree">Degree</label><input id="gh_degree" name="education_degree">
+    <label for="gh_auth">Are you legally authorized to work in the United States?</label>
+    <select id="gh_auth" name="authorized"><option value="">Select</option><option>Yes</option><option>No</option></select>
+    <label for="gh_spon">Will you now or in the future require sponsorship for employment visa status?</label>
+    <select id="gh_spon" name="sponsorship"><option value="">Select</option><option>Yes</option><option>No</option></select>
+    <label for="gh_gender">Gender</label>
+    <select id="gh_gender"><option value="">Select</option><option>Male</option><option>Female</option><option>Decline to self-identify</option></select>
+    <label for="gh_race">Race / Ethnicity</label>
+    <select id="gh_race"><option value="">Select</option><option>Asian</option><option>White</option><option>Decline to self-identify</option></select>
+    <label for="gh_vet">Veteran status</label>
+    <select id="gh_vet"><option value="">Select</option><option>I am not a protected veteran</option><option>Decline to self-identify</option></select>
+    <label for="gh_dis">Disability status</label>
+    <select id="gh_dis"><option value="">Select</option><option>No, I do not have a disability and have not had one in the past</option><option>I do not want to answer</option></select>
+    <label for="gh_hear">How did you hear about this job?</label><input id="gh_hear" name="heard">
+    <label for="gh_cover">Cover Letter / Additional information</label><textarea id="gh_cover" rows="3"></textarea>
+  </div>
+
+  <div class="card" id="wd">
+    <h2>Workday-style</h2>
+    <label>Legal Name - First Name<input data-automation-id="legalNameSection_firstName"></label>
+    <label>Legal Name - Last Name<input data-automation-id="legalNameSection_lastName"></label>
+    <label>Address Line 1<input data-automation-id="addressSection_addressLine1"></label>
+    <label>City<input data-automation-id="addressSection_city"></label>
+    <label>State<select data-automation-id="addressSection_countryRegion"><option value="">Select</option><option value="FL">Florida</option><option value="CA">California</option></select></label>
+    <label>Postal Code<input data-automation-id="addressSection_postalCode"></label>
+    <label>Country<select><option>United States</option><option>Canada</option></select></label>
+    <label>Phone Device Type Number<input type="tel" data-automation-id="phone-number"></label>
+    <fieldset>
+      <legend>Are you willing to relocate?</legend>
+      <label><input type="radio" name="reloc" value="Yes"> Yes</label>
+      <label><input type="radio" name="reloc" value="No"> No</label>
+    </fieldset>
+  </div>
+
+  <div class="card" id="ashby">
+    <h2>Ashby / Lever-style</h2>
+    <label class="field">Full name<input name="name" placeholder="Your full name"></label>
+    <label class="field">Company<input name="company"></label>
+    <label class="field">Job title<input name="title"></label>
+    <label class="field">Earliest start date<input name="available"></label>
+    <label class="field">Expected salary / compensation<input name="salary"></label>
+    <label class="field">Tell us about yourself<textarea name="about" rows="2"></textarea></label>
+  </div>
+
+  <script src="autofill-values.js"></script>
+  <script src="autofill.js"></script>
+  <script>
+    const PROFILE = {
+      name: 'Krushal Kalkani', email: 'krushal@example.com', phone: '561-555-0100',
+      address: { street: '123 Palm Ave', apt: '2B', city: 'Boca Raton', state: 'FL', zip: '33431', country: 'United States' },
+      summary: 'Early-career Software / AI Engineer.',
+      links: { linkedin: 'https://linkedin.com/in/krushal', github: 'https://github.com/krushal', x: '', portfolio: 'https://krushal.dev', other: '' },
+      education: [{ school: 'Florida Atlantic University', degree: 'Master of Science', field: 'Computer Science', gpa: '3.5', start: '2024-08', end: '2026-05' }],
+      experience: [{ company: 'Brainvire Infotech', title: 'Software Developer', start: '2022-01', end: '2023-06' }],
+      skills: { proven: 'Python, Docker', listed: 'FastAPI', never: 'Java', norecord: '' },
+      eeo: { authorized: 'Yes', sponsorship: 'Yes', visa: 'F-1 OPT', startDate: 'Immediately', relocate: 'Yes', pronouns: '', gender: 'Decline to self-identify', hispanic: 'Decline to self-identify', race: 'Decline to self-identify', veteran: 'Decline to self-identify', disability: 'I do not want to answer', source: 'LinkedIn' },
+      targets: { minPay: '60000', locations: 'US remote' }
+    };
+
+    const EXPECT = {
+      gh_first: 'Krushal',
+      gh_last: 'Kalkani',
+      gh_email: 'krushal@example.com',
+      gh_phone: '561-555-0100',
+      gh_li: 'https://linkedin.com/in/krushal',
+      gh_gh: 'https://github.com/krushal',
+      gh_web: 'https://krushal.dev',
+      gh_school: 'Florida Atlantic University',
+      gh_degree: 'Master of Science',
+      gh_auth: 'Yes',
+      gh_spon: 'Yes',
+      gh_gender: 'Decline to self-identify',
+      gh_race: 'Decline to self-identify',
+      gh_vet: 'Decline to self-identify',
+      gh_dis: 'I do not want to answer',
+      gh_hear: 'LinkedIn'
+    };
+
+    function check() {
+      const lines = [];
+      let pass = 0, fail = 0;
+      for (const [id, want] of Object.entries(EXPECT)) {
+        const el = document.getElementById(id);
+        const got = el ? el.value : '';
+        const ok = got === want || (want && got.includes(want));
+        if (ok) pass++; else fail++;
+        lines.push(`${ok ? 'PASS' : 'FAIL'} ${id}: got="${got}" want="${want}"`);
+      }
+      // Workday first name
+      const wdFirst = document.querySelector('[data-automation-id="legalNameSection_firstName"]');
+      const wdOk = wdFirst && wdFirst.value === 'Krushal';
+      if (wdOk) pass++; else fail++;
+      lines.push(`${wdOk ? 'PASS' : 'FAIL'} workday first: "${wdFirst && wdFirst.value}"`);
+      const reloc = document.querySelector('input[name="reloc"][value="Yes"]');
+      const relocOk = reloc && reloc.checked;
+      if (relocOk) pass++; else fail++;
+      lines.push(`${relocOk ? 'PASS' : 'FAIL'} relocate yes checked`);
+      const full = document.querySelector('#ashby input[name="name"]');
+      const fullOk = full && full.value === 'Krushal Kalkani';
+      if (fullOk) pass++; else fail++;
+      lines.push(`${fullOk ? 'PASS' : 'FAIL'} ashby full name: "${full && full.value}"`);
+      document.getElementById('summary').innerHTML = `<strong class="${fail ? 'fail' : 'pass'}">${pass} pass / ${fail} fail</strong>`;
+      document.getElementById('report').textContent = lines.join('\n');
+      return { pass, fail };
+    }
+
+    document.getElementById('run').onclick = () => {
+      const values = buildAutofillValues(PROFILE);
+      const result = window.__jdFillerAutofill(values);
+      const c = check();
+      document.getElementById('report').textContent =
+        JSON.stringify(result, null, 2) + '\n\n' + document.getElementById('report').textContent;
+      window.__autofillTest = { result, ...c };
+    };
+    document.getElementById('scan').onclick = () => {
+      document.getElementById('report').textContent = JSON.stringify(window.__jdFillerAutofillScan(), null, 2);
+    };
+  </script>
+</body>
+</html>

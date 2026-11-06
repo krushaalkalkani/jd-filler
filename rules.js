@@ -1,4 +1,4 @@
-// rules.js - fast hard-rule check on the job text. No network. Shared by popup.js and test-extract.html.
+// rules.js - fast hard-rule check on the job text. No network. Shared by sidepanel.js and test-extract.html.
 // JDRules.check(job) -> { skip: [{rule, quote}], maybe: [{rule, quote}] }
 (function (root) {
   const clean = (s) => (s || '').replace(/ /g, ' ').replace(/\s+/g, ' ').trim();
@@ -53,10 +53,13 @@
     // ---- AUTO-SKIP ----
     add(skip, 'US citizen only', firstMatch(sents, /(?:u\.?s\.?|united states) citizens? only|must be (?:a |an )?(?:u\.?s\.?|united states) citizen|(?:u\.?s\.?|united states) citizenship (?:is )?(?:required|mandatory|needed)|citizenship (?:is )?required|only (?:u\.?s\.?|united states) citizens|require[sd]? (?:u\.?s\.?|united states) citizenship|open (?:only )?to (?:u\.?s\.?|united states) citizens/i));
     add(skip, 'Green card / permanent resident only', firstMatch(sents, /(?:green card|permanent resident)s?(?: holders?)?\s*(?:only|required)|must be (?:a |an )?(?:[^.]{0,30}\bor\b\s*)?(?:green card holder|permanent resident|lawful permanent resident)|\bonly\b[^.]{0,40}(?:green card|permanent resident)|(?:green card|permanent resident)s?(?: holders?)?[^.]{0,30}\bonly\b/i, /sponsor/i));
-    add(skip, 'Security clearance', firstMatch(sents, /security clearance|(?:active|secret|top secret|ts\/sci|public trust|dod)\s+(?:security )?clearance|clearance (?:is )?required|(?:obtain|maintain|hold)[^.]{0,25}clearance/i));
+    add(skip, 'Security clearance', firstMatch(sents, /security clearance|(?:active|secret|top secret|ts\/sci|public trust|dod)\s+(?:security )?clearance|clearance (?:is )?required|(?:obtain|maintain|hold)[^.]{0,25}clearance/i, /\bno (?:security )?clearance|clearance (?:is )?not (?:required|needed|necessary)|(?:does not|doesn't|do not) (?:require|need)[^.]{0,20}clearance|without (?:a )?(?:security )?clearance/i));
     add(skip, 'ITAR / EAR / U.S. person', firstMatch(sents, /\bitar\b|export[\s-]control|u\.?s\.? persons?\b|united states persons?\b/i) || firstMatch(sents, /\bEAR\b/));
     add(skip, 'C2C only', firstMatch(sents, /\bc2c\b|corp[\s-]to[\s-]corp/i) && (() => { const s = firstMatch(sents, /\bc2c\b|corp[\s-]to[\s-]corp/i); return /\bonly\b|no w-?2|w-?2 (?:is )?not/i.test(s) ? s : ''; })());
-    add(skip, 'PhD required', firstMatch(sents, /ph\.?\s?d/i, /preferred|or equivalent|master|\bm\.?s\.?\b|\bms\b|\bm\.?sc|bachelor|\bb\.?s\.?\b|\bbs\b|nice to have|a plus|bonus|or (?:a )?ph|ph\.?\s?d\.?\s*(?:or|\/)|\bor\b/i) && (() => { const s = firstMatch(sents, /ph\.?\s?d/i, /preferred|or equivalent|master|\bm\.?s\.?\b|\bms\b|\bm\.?sc|bachelor|\bb\.?s\.?\b|\bbs\b|nice to have|a plus|bonus|or (?:a )?ph|ph\.?\s?d\.?\s*(?:or|\/)|\bor\b/i); return /required|must|requires?\b|mandatory/i.test(s) ? s : ''; })());
+    // PhD: only a sentence that demands it. "Welcome but not required", "preferred", "MS or PhD" never count.
+    const phdSoft = /preferred|or equivalent|master|\bm\.?s\.?\b|\bms\b|\bm\.?sc|bachelor|\bb\.?s\.?\b|\bbs\b|nice to have|a plus|bonus|or (?:a )?ph|ph\.?\s?d\.?\s*(?:or|\/)|\bor\b|welcome|not (?:required|necessary|needed|mandatory|a requirement)|n't (?:required|necessary|needed)|no(?:t a)? (?:need|requirement)|optional|do(?:es)? not (?:need|require)/i;
+    const phd = firstMatch(sents, /ph\.?\s?d/i, phdSoft);
+    add(skip, 'PhD required', phd && /required|must|requires?\b|mandatory/i.test(phd) ? phd : '');
     if (/\b(senior|sr\.?|staff|principal|lead|iii)\b/i.test(role)) add(skip, 'Senior-level title', role);
     // Firm 3+ years. "N+ years" counts as firm; plain "N years" needs required/must/minimum. "in lieu of a degree" never counts.
     for (const s of sents) {

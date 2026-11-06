@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "JD Filler",
-  "version": "1.3.0",
-  "description": "Score any job posting against your profile with Claude, right in a side panel. Copy the facts, log to Notion.",
+  "version": "1.5.0",
+  "description": "Score jobs with Claude, autofill applications from your profile or the edge tab, and log to Notion.",
   "permissions": [
     "activeTab",
     "scripting",

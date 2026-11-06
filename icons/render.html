@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>JD Filler - icon renderer</title>
+<style>
+  body { margin: 0; font: 13px -apple-system, system-ui, sans-serif; background: #f5f6f8; color: #0f172a; }
+  .row { display: flex; gap: 28px; align-items: flex-end; padding: 24px 28px; }
+  .row.dark { background: #1f2129; color: #e8eaf0; }
+  figure { margin: 0; text-align: center; }
+  figcaption { font-size: 11px; color: #8b95a7; margin-top: 6px; }
+  canvas { display: block; margin: 0 auto; }
+  .big canvas { width: 256px; height: 256px; }
+</style>
+</head>
+<body>
+<!-- Renders icons/logo.svg (48, 128) and icons/logo-small.svg (16, 32) to PNGs.
+     Open through a local server; window.ICONS holds the PNG data URLs after load. -->
+<div class="row" id="light"></div>
+<div class="row dark" id="dark"></div>
+<script>
+const SIZES = [[16, 'logo-small.svg'], [32, 'logo-small.svg'], [48, 'logo.svg'], [128, 'logo.svg']];
+const load = (src) => new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = src + '?' + Date.now(); });
+(async () => {
+  window.ICONS = {};
+  for (const [size, file] of SIZES) {
+    const img = await load(file);
+    const c = document.createElement('canvas'); c.width = size; c.height = size;
+    c.getContext('2d').drawImage(img, 0, 0, size, size);
+    window.ICONS[size] = c.toDataURL('image/png');
+  }
+  for (const id of ['light', 'dark']) {
+    const row = document.getElementById(id);
+    for (const [size] of SIZES) {
+      const f = document.createElement('figure');
+      const i = new Image(); i.src = window.ICONS[size]; i.width = size; i.height = size; i.style.imageRendering = 'pixelated';
+      f.appendChild(i); f.insertAdjacentHTML('beforeend', `<figcaption>${size}px</figcaption>`); row.appendChild(f);
+    }
+    const f = document.createElement('figure'); f.className = 'big';
+    const i = new Image(); i.src = 'logo.svg'; i.width = 256; i.height = 256; f.appendChild(i);
+    f.insertAdjacentHTML('beforeend', '<figcaption>master @2x</figcaption>'); row.appendChild(f);
+  }
+  window.ICONS_READY = true;
+})();
+</script>
+</body>
+</html>
