@@ -248,6 +248,8 @@ function rememberVerdict(job, verdict, meta, notion, state) {
 function pushRecent(job, verdict) {
   if (!job || !verdict || typeof verdict.score !== 'number') return;
   const link = normalizeJobLink(job.link) || `${normCompany(job.company)}|${String(job.role || '').toLowerCase()}`;
+  const prev = recents.find((r) => r.key === link);
+  if (prev && prev.score === verdict.score) return; // snapshot saves often; only record new / changed scores
   const item = {
     company: job.company || 'Unknown',
     role: job.role || 'Untitled',

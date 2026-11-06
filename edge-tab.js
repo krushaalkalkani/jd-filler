@@ -295,13 +295,21 @@
   }
 
   root.querySelector('.x').addEventListener('click', (e) => { e.stopPropagation(); dismissed = true; evaluate(); });
+  function resetAfLabel() {
+    if (dead) return;
+    afBtn.classList.remove('ok', 'err');
+    afBtn.textContent = 'Autofill';
+    afBtn.title = 'Fill the form on this page from your profile';
+    afBtn.removeAttribute('aria-busy');
+  }
   function runAutofill(e) {
     if (e) { e.preventDefault(); e.stopPropagation(); }
     if (dead || afBtn.getAttribute('aria-busy') === 'true') return;
+    if (!alive()) { teardown(); return; }
     afBtn.setAttribute('aria-busy', 'true');
     afBtn.classList.remove('ok', 'err');
     afBtn.textContent = 'Filling…';
-    safeChrome(() => {
+    try {
       chrome.runtime.sendMessage({ type: 'jdf.autofill' }).then((res) => {
         if (dead) return;
         afBtn.removeAttribute('aria-busy');
@@ -310,21 +318,23 @@
           afBtn.textContent = res.filled ? `Filled ${res.filled}` : 'No fields';
         } else {
           afBtn.classList.add('err');
-          afBtn.textContent = 'Failed';
+          const err = (res && res.error) || 'Failed';
+          afBtn.textContent = /profile/i.test(err) ? 'Set Profile' : 'Failed';
+          afBtn.title = err;
         }
-        setTimeout(() => {
-          if (dead) return;
-          afBtn.classList.remove('ok', 'err');
-          afBtn.textContent = 'Autofill';
-        }, 2200);
+        setTimeout(resetAfLabel, 2200);
       }).catch(() => {
         if (dead) return;
         afBtn.removeAttribute('aria-busy');
         afBtn.classList.add('err');
         afBtn.textContent = 'Failed';
+        setTimeout(resetAfLabel, 2200);
         if (!alive()) teardown();
       });
-    });
+    } catch (err) {
+      resetAfLabel();
+      if (isInvalidated(err)) teardown();
+    }
   }
   afBtn.addEventListener('click', runAutofill);
   afBtn.addEventListener('keydown', (e) => {
