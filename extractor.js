@@ -176,6 +176,74 @@
     return u.href;
   }
 
+  function isLinkedInHost(h) {
+    return /(^|\.)linkedin\.com$/i.test(String(h || '').replace(/^www\./, ''));
+  }
+
+  // Unwrap LinkedIn redirect wrappers (safety/go, externalApply) and strip tracking params.
+  function normalizeExternalUrl(href) {
+    if (!href || !/^https?:/i.test(href)) return '';
+    try {
+      let u = new URL(href, location.origin);
+      for (let i = 0; i < 3; i++) {
+        const nested = u.searchParams.get('url') || u.searchParams.get('dest') || u.searchParams.get('redirectUrl');
+        if (isLinkedInHost(u.hostname) && nested && /^https?:/i.test(nested)) {
+          u = new URL(nested);
+          continue;
+        }
+        break;
+      }
+      if (isLinkedInHost(u.hostname)) return '';
+      const strip = ['utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content', 'gh_src', 'gh_jid', 'lever-source', 'ref', 'refId', 'trackingId', 'trk', 'original_referer', 'fbclid', 'gclid', '_gl', 'mc_cid', 'mc_eid', 'eBP', 'refId', 'trackingId'];
+      for (const k of [...u.searchParams.keys()]) if (strip.includes(k) || /^utm_/i.test(k)) u.searchParams.delete(k);
+      u.hash = '';
+      return u.href;
+    } catch (e) { return ''; }
+  }
+
+  // Company career / ATS Apply URL from the LinkedIn offsite Apply control. Easy Apply has no URL -> ''.
+  function linkedinOfficialLink(root) {
+    const scope = root || document;
+    const sels = [
+      'a[data-tracking-control-name*="apply-link-offsite"]',
+      'a[data-control-name*="apply_link_offsite"]',
+      'a[data-control-name*="apply-link-offsite"]',
+      'a[href*="externalApply"]',
+      'a[href*="safety/go"]',
+      'a.jobs-apply-button[href]',
+      'a[class*="jobs-apply-button"][href]',
+      '.jobs-apply-button--top-card a[href]',
+      '.jobs-s-apply a[href]',
+      'a[aria-label*="Apply"][href]',
+      'a[aria-label*="apply"][href]',
+      'a[aria-label*="company website"][href]'
+    ];
+    const seen = new Set();
+    const cands = [];
+    for (const sel of sels) {
+      for (const a of qa(sel, scope)) {
+        const href = a.href || a.getAttribute('href') || '';
+        if (!href || seen.has(href)) continue;
+        seen.add(href);
+        cands.push(a);
+      }
+    }
+    for (const a of qa('a[href]', scope)) {
+      const label = clean(a.getAttribute('aria-label') || a.innerText || a.textContent);
+      if (!/^(?:apply|apply on .+|apply for this job)/i.test(label) && !/\bapply\b/i.test(label)) continue;
+      if (/easy apply/i.test(label)) continue;
+      const href = a.href || a.getAttribute('href') || '';
+      if (!href || seen.has(href)) continue;
+      seen.add(href);
+      cands.push(a);
+    }
+    for (const a of cands) {
+      const out = normalizeExternalUrl(a.href || a.getAttribute('href') || '');
+      if (out) return out;
+    }
+    return '';
+  }
+
   function cleanCompany(s) {
     return clean(s).replace(/^\d{2,}\s+/, '').replace(/^at\s+/i, '').replace(/\s*(?:logo|·\s*follow|follow)$/i, '').replace(/\s*\(.*?hiring.*?\)$/i, '').trim();
   }
@@ -349,6 +417,8 @@
       '.top-card-layout__card', '.topcard', '[class*="top-card"]'
     ], pane);
     const notJunk = (el) => !el.closest('[class*="premium"], [class*="how-you-match"], [class*="insight-card"], [class*="people-you"], footer, nav');
+    const official = linkedinOfficialLink(top || pane);
+    if (official) r.link = official;
 
     if (top) {
       // Classic layout with named classes. No bare h1 fallback: injected widgets own h1s too.

@@ -28,7 +28,7 @@ Both keys are stored in `chrome.storage.local` on this machine only. They are ne
 ### Notion token and database
 1. Go to https://www.notion.so/profile/integrations -> **New integration** (internal). Copy the secret.
 2. Share the tracker with the integration: open the **Application Tracker** database in Notion -> `...` menu (top right) -> **Connections** -> add your integration.
-3. Paste the secret into **Notion internal integration token**. The data source id and database page id are prefilled for your tracker; change them if you move it. Press **Test**: it checks the token, reaches the data source, and lists any of the 10 required properties that are missing.
+3. Paste the secret into **Notion internal integration token**. The data source id and database page id are prefilled for your tracker; change them if you move it. Press **Test**: it checks the token, reaches the data source, and lists any of the required properties that are missing.
 
 Required properties and the exact option names (the test tells you if one is missing):
 
@@ -36,16 +36,17 @@ Required properties and the exact option names (the test tells you if one is mis
 |---|---|---|
 | Company Name | title | |
 | Job Title | text | |
-| Job Link | url | |
+| Job Link | url | company Apply URL when LinkedIn has an offsite Apply link; otherwise the LinkedIn / ATS page URL |
 | Location | text | |
 | Salary Range | text | |
 | Work Mode | select | Remote, Hybrid, On-site |
 | Job Type | select | Full Time, Part Time, Internship, Contract, Volunteer |
 | Sponsorship | select | Sponsors visa, OPT/CPT OK, Not mentioned, No sponsorship, US citizens only |
 | Source | select | Linkedin, Job Portal, Company's career page, Indeed, Sonic Jobs |
+| Stage | select | must include **Applied** (set automatically on every Log to Notion) |
 | Applied On | date | date only |
 
-Mapping: Greenhouse / Lever / Workday / Ashby / company sites -> "Company's career page"; Glassdoor / Handshake / other boards -> "Job Portal". A select is left empty when the value is Unknown. The Rejected On column is never touched.
+The Notion page **body** is filled with the scraped job description (paragraph blocks). Mapping: Greenhouse / Lever / Workday / Ashby / company sites -> "Company's career page"; Glassdoor / Handshake / other boards -> "Job Portal". A select is left empty when the value is Unknown. The Rejected On column is never touched.
 
 ## Profile page
 
@@ -63,7 +64,7 @@ The popup follows the macOS grouped-list style: grey page, white cards, system b
 - **Rule callouts** - "Auto-skip" (red dot) and "Worth a second look" (amber dot) appear above the card with the sentence that triggered them.
 - **⋯ menu** - Read the page again (after you click a different job in a LinkedIn list), Copy resume prompt (a tailoring prompt: role, company, the ATS keywords you can truthfully use, lead-with, don't-claim, fit map and JD), Copy facts only, Copy as JSON, and the company links: H-1B history, alumni from your school, recruiters, Glassdoor, E-Verify.
 - **Details / Job description** - two disclosure rows. Open Details to edit any field before you copy or log.
-- **Bottom bar** - **Copy for Grok** (your template), **Log to Notion**, **Save** to the tracker. Log to Notion first queries the data source for the same Job Link and shows "Already logged" instead of creating a duplicate; on success you get the page link and an **Undo** button (moves the page to trash). With the Settings option on (default), logging runs by itself when the score is at least the threshold you set (default 70).
+- **Bottom bar** - **Copy for Grok** (your template), **Log to Notion**, **Save** to the tracker. Log to Notion first queries the data source for the same Job Link and shows "Already logged" instead of creating a duplicate; on success Stage is set to Applied, the JD is written into the page body, you get the page link and an **Undo** button (moves the page to trash). With the Settings option on (default), logging runs by itself when the score is at least the threshold you set (default 70).
 
 ## Tracker tab
 

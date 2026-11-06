@@ -258,6 +258,7 @@ function notionProperties(job, verdict) {
     'Location': { rich_text: text(job.location || '') },
     'Salary Range': { rich_text: text(job.salary && job.salary !== 'Not stated' ? job.salary : '') },
     'Sponsorship': { select: { name: sponsorshipValue(job, verdict) } },
+    'Stage': { select: { name: 'Applied' } },
     'Applied On': { date: { start: localDate() } }
   };
   if (WORK_MODE_OK.includes(job.work_mode)) props['Work Mode'] = { select: { name: job.work_mode } };
@@ -266,6 +267,50 @@ function notionProperties(job, verdict) {
   const src = SOURCE_MAP[job.source];
   if (src) props['Source'] = { select: { name: src } };
   return props;
+}
+
+// Notion rich_text content max is 2000; page create accepts up to 100 children.
+const NOTION_RT_MAX = 2000;
+const NOTION_CHILDREN_MAX = 100;
+
+function chunkText(s, max) {
+  const out = [];
+  let t = String(s || '');
+  while (t.length > max) {
+    let cut = t.lastIndexOf(' ', max);
+    if (cut < max * 0.5) cut = max;
+    out.push(t.slice(0, cut));
+    t = t.slice(cut).replace(/^\s+/, '');
+  }
+  if (t) out.push(t);
+  return out;
+}
+
+function jdToNotionBlocks(jd) {
+  const raw = String(jd || '').replace(/\r/g, '').trim();
+  if (!raw) return [];
+  const paras = raw.split(/\n\s*\n/).map((p) => p.trim()).filter(Boolean);
+  const blocks = [];
+  for (const para of paras) {
+    for (const part of chunkText(para, NOTION_RT_MAX)) {
+      blocks.push({
+        object: 'block',
+        type: 'paragraph',
+        paragraph: { rich_text: [{ type: 'text', text: { content: part } }] }
+      });
+    }
+  }
+  return blocks;
+}
+
+async function notionAppendChildren(notionToken, pageId, blocks) {
+  for (let i = 0; i < blocks.length; i += NOTION_CHILDREN_MAX) {
+    const batch = blocks.slice(i, i + NOTION_CHILDREN_MAX);
+    await fetchJson(`${NOTION_URL}/blocks/${pageId}/children`, {
+      method: 'PATCH', headers: notionHeaders(notionToken),
+      body: JSON.stringify({ children: batch })
+    }, 'Notion');
+  }
 }
 
 async function notionFind(link) {
@@ -285,10 +330,19 @@ async function notionCreate({ job, verdict }) {
   if (!notionToken) throw new ApiError('Add your Notion token in Settings.', { code: 'no_key' });
   const existing = await notionFind(job.link);
   if (existing) return { ok: true, exists: true, page: existing };
+  const blocks = jdToNotionBlocks(job.jd);
+  const first = blocks.slice(0, NOTION_CHILDREN_MAX);
+  const rest = blocks.slice(NOTION_CHILDREN_MAX);
+  const body = {
+    parent: { type: 'data_source_id', data_source_id: notionDataSourceId },
+    properties: notionProperties(job, verdict)
+  };
+  if (first.length) body.children = first;
   const res = await fetchJson(`${NOTION_URL}/pages`, {
     method: 'POST', headers: notionHeaders(notionToken),
-    body: JSON.stringify({ parent: { type: 'data_source_id', data_source_id: notionDataSourceId }, properties: notionProperties(job, verdict) })
+    body: JSON.stringify(body)
   }, 'Notion');
+  if (rest.length) await notionAppendChildren(notionToken, res.id, rest);
   return { ok: true, exists: false, page: { id: res.id, url: res.url || '' } };
 }
 
@@ -305,10 +359,10 @@ async function notionTest() {
   const me = await fetchJson(`${NOTION_URL}/users/me`, { headers: notionHeaders(notionToken) }, 'Notion');
   const ds = await fetchJson(`${NOTION_URL}/data_sources/${notionDataSourceId}`, { headers: notionHeaders(notionToken) }, 'Notion');
   const props = Object.keys(ds.properties || {});
-  const need = ['Company Name', 'Job Title', 'Job Link', 'Location', 'Salary Range', 'Work Mode', 'Job Type', 'Sponsorship', 'Source', 'Applied On'];
+  const need = ['Company Name', 'Job Title', 'Job Link', 'Location', 'Salary Range', 'Work Mode', 'Job Type', 'Sponsorship', 'Source', 'Stage', 'Applied On'];
   const missing = need.filter((p) => !props.includes(p));
   const title = (ds.title || []).map((t) => t.plain_text).join('') || '(untitled)';
-  return { ok: true, message: `Token works (${me.name || me.type}). Data source "${title}" reachable.${missing.length ? ' Missing properties: ' + missing.join(', ') : ' All 10 properties present.'}` };
+  return { ok: true, message: `Token works (${me.name || me.type}). Data source "${title}" reachable.${missing.length ? ' Missing properties: ' + missing.join(', ') : ' All ' + need.length + ' properties present.'}` };
 }
 
 // ---------- message router ----------
