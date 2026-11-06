@@ -143,6 +143,9 @@ function scoreResult(r) {
   if (r._debug && r._debug.jsonld) s += 5000;
   if (r._debug && r._debug.extractor !== 'generic') s += 5000;
   if (r._debug && r._debug.from_body) s -= 4000;
+  // reCAPTCHA / challenge iframes must never beat the real Ashby (or other ATS) frame.
+  if (/recaptcha|captcha|cloudflare|attention required|just a moment|enable javascript/i.test(r.role || '')) s -= 20000;
+  if (/recaptcha|captcha/i.test((r.jd || '').slice(0, 400)) && (r.jd || '').length < 800) s -= 10000;
   return s;
 }
 

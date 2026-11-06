@@ -248,7 +248,9 @@
     return clean(s).replace(/^\d{2,}\s+/, '').replace(/^at\s+/i, '').replace(/\s*(?:logo|·\s*follow|follow)$/i, '').replace(/\s*\(.*?hiring.*?\)$/i, '').trim();
   }
   function cleanRole(s) {
-    return clean(s).replace(/\s*-\s*job post$/i, '').replace(/\s*\|\s*linkedin$/i, '').replace(/\s+at\s+[^|]+$/i, (m) => (m.length > 40 ? '' : m)).trim();
+    const t = clean(s).replace(/\s*-\s*job post$/i, '').replace(/\s*\|\s*linkedin$/i, '').replace(/\s+at\s+[^|]+$/i, (m) => (m.length > 40 ? '' : m)).trim();
+    if (/^(?:re)?captcha$|cloudflare|attention required|just a moment|enable javascript|privacy error|access denied/i.test(t)) return '';
+    return t;
   }
 
   // ---------- JSON-LD JobPosting (most company sites, Greenhouse, Lever, Ashby, Workday, SmartRecruiters) ----------
@@ -538,10 +540,85 @@
     return r;
   }
 
+  // Ashby SSR embeds the posting in window.__appData. The visible DOM is a JS shell
+  // (and a reCAPTCHA badge), so class/h1 scraping often returns "reCAPTCHA" or nothing.
+  function ashbyAppData() {
+    let data = null;
+    try { if (window.__appData && typeof window.__appData === 'object') data = window.__appData; } catch (e) { /* ignore */ }
+    if (!data) {
+      for (const s of qa('script')) {
+        const t = s.textContent || '';
+        const m = t.match(/window\.__appData\s*=\s*(\{[\s\S]*\})\s*;?\s*$/);
+        if (!m) continue;
+        try { data = JSON.parse(m[1]); break; } catch (e) { /* truncated / trailing junk */ }
+        // Brace-match when the script has more after the object.
+        const start = t.indexOf('{', t.indexOf('window.__appData'));
+        if (start < 0) continue;
+        let depth = 0;
+        for (let i = start; i < t.length; i++) {
+          const c = t[i];
+          if (c === '{') depth++;
+          else if (c === '}') {
+            depth--;
+            if (depth === 0) {
+              try { data = JSON.parse(t.slice(start, i + 1)); } catch (e) { data = null; }
+              break;
+            }
+          }
+        }
+        if (data) break;
+      }
+    }
+    return data;
+  }
+
+  function mapAshbyEmployment(t) {
+    const key = String(t || '').replace(/\s+/g, '');
+    const table = {
+      FullTime: 'Full-time', PartTime: 'Part-time', Intern: 'Internship', Internship: 'Internship',
+      Contract: 'Contract', Temporary: 'Contract', Volunteer: 'Volunteer', Seasonal: 'Contract'
+    };
+    return table[key] || mapJobType(String(t || '').replace(/([a-z])([A-Z])/g, '$1 $2'));
+  }
+
+  function mapAshbyWorkplace(t) {
+    const s = String(t || '');
+    if (/remote/i.test(s)) return 'Remote';
+    if (/hybrid/i.test(s)) return 'Hybrid';
+    if (/on\s*-?\s*site|onsite/i.test(s)) return 'On-site';
+    return detectWorkMode(s, true);
+  }
+
   function ashby() {
     const r = {};
-    r.role = txt('h1');
-    r.jd = block(firstEl(['[class*="descriptionText"]', '[class*="_description_"]', '.ashby-job-posting-right-pane', 'main']));
+    const data = ashbyAppData();
+    const posting = data && data.posting;
+    const org = data && data.organization;
+    if (posting && posting.title) {
+      r.role = clean(posting.title);
+      if (org && org.name) r.company = clean(org.name);
+      r.location = clean([posting.locationName].concat(posting.secondaryLocationNames || []).filter(Boolean).join(' | '));
+      r.work_mode = mapAshbyWorkplace(posting.workplaceType) || (posting.isRemote ? 'Remote' : '');
+      r.job_type = mapAshbyEmployment(posting.employmentType);
+      r.salary = clean(posting.compensationTierSummary || posting.scrapeableCompensationSalarySummary || '');
+      if (posting.publishedDate) r.posted = String(posting.publishedDate).slice(0, 10);
+      if (posting.descriptionPlainText) r.jd = String(posting.descriptionPlainText).trim();
+      else if (posting.descriptionHtml) r.jd = htmlToText(posting.descriptionHtml);
+      r._ashby = true;
+      return r;
+    }
+    // Hydrated DOM fallback when __appData is missing (rare). Never trust a bare h1 alone -
+    // reCAPTCHA widgets also use headings.
+    r.role = firstTxt([
+      '[class*="ashby-job-posting-heading"]', '[class*="JobPosting"] h1', '[class*="jobPosting"] h1',
+      'h1:not([class*="captcha"]):not([id*="captcha"])'
+    ]);
+    if (/recaptcha|captcha/i.test(r.role || '')) r.role = '';
+    r.jd = block(firstEl([
+      '[class*="descriptionText"]', '[class*="_description_"]', '.ashby-job-posting-right-pane',
+      '[class*="JobDescription"]', 'article', 'main'
+    ]));
+    if (r.jd && /recaptcha|enable javascript to run this app/i.test(r.jd) && r.jd.length < 400) r.jd = '';
     return r;
   }
 
@@ -599,7 +676,7 @@
       else if (/greenhouse\.io$/.test(host)) { site = greenhouse(); extractor = 'greenhouse'; }
       else if (/lever\.co$/.test(host)) { site = lever(); extractor = 'lever'; }
       else if (/myworkdayjobs\.com$/.test(host)) { site = workday(); extractor = 'workday'; }
-      else if (/ashbyhq\.com$/.test(host)) { site = ashby(); extractor = 'ashby'; }
+      else if (/ashbyhq\.com$/.test(host) || (typeof window !== 'undefined' && window.__appData && window.__appData.posting)) { site = ashby(); extractor = 'ashby'; }
       else if (/smartrecruiters\.com$/.test(host)) { site = smartrecruiters(); extractor = 'smartrecruiters'; }
     } catch (e) { site = { _err: String(e) }; }
     let ld = {}; try { ld = jsonLd(); } catch (e) { /* ignore */ }
