@@ -7,7 +7,7 @@ Personal Chrome extension. Open a job posting, press the toolbar button (or `Cmd
 3. **A Claude apply score** (0 to 100) with fit, what to lead with, what not to claim, and the next action. 70 and up means apply, 40 to 69 is a maybe, under 40 is a skip.
 4. **A row in your Notion Application Tracker**, created automatically when the score reaches your threshold (default 70, or by hand), with Undo.
 
-Plus: a **Profile page** (name, address, links, education, experience, skills by honesty level, EEO answers, each with a copy button) that also feeds Claude; **insider links** per company (H-1B history, alumni from your school, recruiters, Glassdoor, E-Verify); **ATS keywords** and a **resume-tailoring prompt**; a **Tracker** with stages (Saved, Applied, OA, Screen, Interview, Offer, Rejected), stage filters and a weekly goal; Copy for Grok (template) and CSV export.
+Plus: a **Profile page** (name, address, links, education, experience, skills by honesty level, EEO answers, each with a copy button) that also feeds Claude; **insider links** per company (H-1B history, alumni from your school, recruiters, Glassdoor, E-Verify); **ATS keywords** and a **resume-tailoring prompt**; a **Tracker** with stages (Saved, Applied, OA, Screen, Interview, Offer, Rejected), stage filters and a weekly goal; Copy (template) and CSV export.
 
 ## Install
 
@@ -64,7 +64,7 @@ The popup follows the macOS grouped-list style: grey page, white cards, system b
 - **Rule callouts** - "Auto-skip" (red dot) and "Worth a second look" (amber dot) appear above the card with the sentence that triggered them.
 - **⋯ menu** - Read the page again (after you click a different job in a LinkedIn list), Copy resume prompt (a tailoring prompt: role, company, the ATS keywords you can truthfully use, lead-with, don't-claim, fit map and JD), Copy facts only, Copy as JSON, and the company links: H-1B history, alumni from your school, recruiters, Glassdoor, E-Verify.
 - **Details / Job description** - two disclosure rows. Open Details to edit any field before you copy or log.
-- **Bottom bar** - **Copy for Grok** (your template), **Log to Notion**, **Save** to the tracker. Log to Notion first queries the data source for the same Job Link and shows "Already logged" instead of creating a duplicate; on success Stage is set to Applied, the JD is written into the page body, you get the page link and an **Undo** button (moves the page to trash). With the Settings option on (default), logging runs by itself when the score is at least the threshold you set (default 70).
+- **Bottom bar** - **Copy** (your template: facts + JD), **Log to Notion**, **Save** to the tracker. Log to Notion first queries the data source for the same Job Link and shows "Already logged" instead of creating a duplicate; on success Stage is set to Applied, the JD is written into the page body, you get the page link and an **Undo** button (moves the page to trash). With the Settings option on (default), logging runs by itself when the score is at least the threshold you set (default 70).
 
 ## Tracker tab
 

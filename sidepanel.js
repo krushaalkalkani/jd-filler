@@ -550,7 +550,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   $('#deep').addEventListener('change', () => store.setSettings({ deep: $('#deep').checked }));
   $('#logNotion').addEventListener('click', () => logToNotion(false));
   $('#copyResume').addEventListener('click', () => copy(resumePrompt(read()), 'Resume prompt copied'));
-  $('#copyGrok').addEventListener('click', async () => copy(render(await store.getTemplate(), read()), 'Copied for Grok'));
+  $('#copy').addEventListener('click', async () => copy(render(await store.getTemplate(), read()), 'Copied'));
   $('#copyFacts').addEventListener('click', async () => copy(render(factsTemplate(await store.getTemplate()), read()), 'Facts copied'));
   $('#copyJson').addEventListener('click', () => { const j = read(); delete j._debug; if (lastVerdict) j.verdict = lastVerdict; copy(JSON.stringify(j, null, 2), 'JSON copied'); });
   $('#save').addEventListener('click', saveCurrent);
