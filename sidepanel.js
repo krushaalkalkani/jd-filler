@@ -1,12 +1,13 @@
-// popup.js - reads the job from the active tab, runs the rule check, asks Claude for a score, logs to Notion.
+// sidepanel.js - the JD Filler side panel. Follows the active tab, reads the job, runs the rule check,
+// asks Claude for a score, logs to Notion, and pushes the score to the edge tab on the page.
 const $ = (s) => document.querySelector(s);
 const $$ = (s) => Array.from(document.querySelectorAll(s));
 
 const FIELDS = ['company', 'role', 'link', 'source', 'location', 'work_mode', 'job_type', 'salary', 'experience', 'sponsorship', 'seniority', 'sponsorship_note', 'posted', 'applicants', 'auth_lines', 'jd'];
 const OPT_START = '2026-09-12'; // unemployment day 1
 const OPT_LIMIT = 90;
+const RING_C = 2 * Math.PI * 34; // ring circumference (r = 34)
 let SCHOOL = 'Florida Atlantic University';
-const STAGES = ['Saved', 'Applied', 'OA', 'Screen', 'Interview', 'Offer', 'Rejected'];
 const DEFAULT_TEMPLATE = [
   'Job: {{role}} at {{company}}',
   'Link: {{link}}',
@@ -23,9 +24,9 @@ const DEFAULT_TEMPLATE = [
   '--- Job description ---',
   '{{jd}}'
 ].join('\n');
-const DEFAULT_SETTINGS = { anthropicKey: '', notionToken: '', notionDataSourceId: '42d52ecb-1841-82ad-939d-87b508593635', notionDatabaseId: '54352ecb18418259b0fc817076dabcbc', autoLog: true, autoLogMin: 70, autoCheck: false, deep: false, weeklyGoal: 20 };
+const DEFAULT_SETTINGS = { anthropicKey: '', notionToken: '', notionDataSourceId: '42d52ecb-1841-82ad-939d-87b508593635', notionDatabaseId: '54352ecb18418259b0fc817076dabcbc', autoLog: true, autoLogMin: 70, autoCheck: false, deep: false, edgeTab: 'jobs' };
 const bandFor = (score) => (score >= 70 ? 'APPLY' : score >= 40 ? 'MAYBE' : 'SKIP');
-const bandWord = { APPLY: 'apply', MAYBE: 'maybe', SKIP: 'skip' };
+const bandWord = { APPLY: 'Apply', MAYBE: 'Maybe', SKIP: 'Skip' };
 // A verdict saved by an older build has a band but no score; map it so the ring and badges still render.
 function normalizeVerdict(v) {
   if (!v) return v;
@@ -36,19 +37,47 @@ function normalizeVerdict(v) {
   v.verdict = bandFor(v.score);
   return v;
 }
-const scoreLabel = (v) => (v && typeof v.score === 'number' ? `${v.score}%` : (v && v.verdict) || '');
 // The background service worker keeps running the old code after a `git pull` until the extension is reloaded.
 function warnIfStale(res) {
   const mine = chrome.runtime.getManifest().version;
-  if (res && res.version && res.version !== mine) toast(`Extension files changed: reload it at chrome://extensions`, 6000);
+  if (res && res.version && res.version !== mine) toast('Extension files changed: reload it at chrome://extensions', 6000);
   else if (res && res.ok && !res.version) toast('Extension files changed: reload it at chrome://extensions', 6000);
 }
 
+// ---------- state ----------
 let current = null;    // last extracted/edited job
 let lastRules = null;
 let lastVerdict = null;
+let lastMeta = null;
 let notionPage = null; // {id,url} for the current job
-let stageFilter = 'All';
+let notionState = null; // {cls, html} so it survives tab switches
+let windowId = null;
+let activeTab = null;  // {id, url} the panel is showing
+const cache = new Map(); // `${tabId}|${url}` -> snapshot of the job view
+
+// ---------- icons (20x20 stroke paths) ----------
+const ICON = {
+  pin: '<path d="M10 17s-5.5-4.6-5.5-8.8a5.5 5.5 0 0 1 11 0C15.5 12.4 10 17 10 17z"/><circle cx="10" cy="8.3" r="1.9"/>',
+  home: '<path d="M3.5 9 10 3.5 16.5 9v7a1 1 0 0 1-1 1h-11a1 1 0 0 1-1-1z"/><path d="M8 17v-5h4v5"/>',
+  building: '<rect x="4" y="3" width="12" height="14" rx="1.5"/><path d="M7.5 6.5h1M11.5 6.5h1M7.5 9.5h1M11.5 9.5h1M8.5 17v-3h3v3"/>',
+  globe: '<circle cx="10" cy="10" r="7"/><path d="M3 10h14M10 3a10.5 10.5 0 0 1 0 14M10 3a10.5 10.5 0 0 0 0 14"/>',
+  bag: '<rect x="3" y="6" width="14" height="10.5" rx="2"/><path d="M7.5 6V4.5A1.5 1.5 0 0 1 9 3h2a1.5 1.5 0 0 1 1.5 1.5V6"/>',
+  money: '<rect x="2.5" y="5" width="15" height="10" rx="2"/><circle cx="10" cy="10" r="2.2"/>',
+  ladder: '<path d="M4 16h4v-4h4V8h4V4"/>',
+  clock: '<circle cx="10" cy="10" r="7"/><path d="M10 6v4l2.5 1.5"/>',
+  users: '<circle cx="7.5" cy="7" r="2.6"/><path d="M2.8 16a4.7 4.7 0 0 1 9.4 0"/><path d="M13 4.6a2.6 2.6 0 0 1 0 4.9M14.5 11.6a4.7 4.7 0 0 1 2.7 4.4"/>',
+  shield: '<path d="M10 2.8 4 5v4.6c0 3.6 2.5 6.4 6 7.6 3.5-1.2 6-4 6-7.6V5z"/>',
+  up: '<path d="M10 15V5M5.5 9.5 10 5l4.5 4.5"/>',
+  ban: '<circle cx="10" cy="10" r="6.5"/><path d="m5.4 14.6 9.2-9.2"/>',
+  check: '<path d="m5 10.5 3.2 3L15 6.5"/>',
+  alert: '<path d="M10 3.2 2.6 16h14.8z"/><path d="M10 8.5v3.3M10 14v.01"/>',
+  info: '<circle cx="10" cy="10" r="7"/><path d="M10 9v4.5M10 6.5v.01"/>',
+  ext: '<path d="M11 4h5v5M16 4l-7 7M14 11.5V15a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h3.5"/>',
+  search: '<circle cx="9" cy="9" r="5"/><path d="m13 13 3.5 3.5"/>',
+  grad: '<path d="M2.5 8 10 4.5 17.5 8 10 11.5z"/><path d="M5.5 9.5V13c1.3 1.3 2.8 2 4.5 2s3.2-.7 4.5-2V9.5"/>',
+  star: '<path d="M10 3.2 11.9 7.6 16.6 8 13 11.1 14.1 15.8 10 13.3 5.9 15.8 7 11.1 3.4 8 8.1 7.6z"/>'
+};
+const ico = (name) => `<svg viewBox="0 0 20 20" aria-hidden="true">${ICON[name] || ''}</svg>`;
 
 // ---------- small utils ----------
 function toast(msg, ms) {
@@ -58,7 +87,10 @@ function toast(msg, ms) {
   clearTimeout(toast._t);
   toast._t = setTimeout(() => t.classList.remove('show'), ms || 1600);
 }
-function setStatus(msg) { $('#status').textContent = msg; }
+function setStatus(msg, state) {
+  $('#status').textContent = msg;
+  $('#liveDot').className = 'live' + (state ? ' ' + state : '');
+}
 function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
 async function copy(text, label) {
   try { await navigator.clipboard.writeText(text); toast(label || 'Copied'); }
@@ -78,22 +110,32 @@ function optDay() {
   return Math.floor((now - start) / 86400000) + 1;
 }
 function todayStr() { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; }
-function weekStart() { const d = new Date(); d.setHours(0, 0, 0, 0); const day = (d.getDay() + 6) % 7; d.setDate(d.getDate() - day); return d; } // Monday
 function send(msg) { return chrome.runtime.sendMessage(msg); }
+const said = (x) => { const t = (x == null ? '' : String(x)).trim(); return t && !/^(not stated|unknown|none|n\/a|-)$/i.test(t) ? t : ''; };
 
 // ---------- storage ----------
 const store = {
   async getTemplate() { const r = await chrome.storage.sync.get('template'); return r.template || DEFAULT_TEMPLATE; },
   async setTemplate(t) { await chrome.storage.sync.set({ template: t }); },
-  async getJobs() { const r = await chrome.storage.local.get('jobs'); return r.jobs || []; },
-  async setJobs(jobs) { await chrome.storage.local.set({ jobs }); },
   async getSettings() { const r = await chrome.storage.local.get(Object.keys(DEFAULT_SETTINGS)); return Object.assign({}, DEFAULT_SETTINGS, r); },
   async setSettings(patch) { await chrome.storage.local.set(patch); }
 };
 
-// ---------- extraction ----------
-async function getTab() { const [tab] = await chrome.tabs.query({ active: true, currentWindow: true }); return tab; }
+// ---------- tabs ----------
+async function getTab() {
+  const q = windowId != null ? { active: true, windowId } : { active: true, currentWindow: true };
+  const [tab] = await chrome.tabs.query(q);
+  return tab;
+}
+const keyFor = (tab) => (tab ? `${tab.id}|${tab.url}` : '');
+// Tell the edge tab on the page what the score is (null clears it). Pages without the content script just ignore it.
+function pushScore(tabId, verdict) {
+  if (tabId == null || !chrome.tabs.sendMessage) return;
+  const score = verdict && typeof verdict.score === 'number' ? verdict.score : null;
+  try { chrome.tabs.sendMessage(tabId, { type: 'jdf.score', score, band: score == null ? null : bandFor(score) }).catch(() => {}); } catch (e) { /* no receiver */ }
+}
 
+// ---------- extraction ----------
 function scoreResult(r) {
   let s = (r.jd || '').length;
   if (r.role) s += 1000;
@@ -104,9 +146,8 @@ function scoreResult(r) {
   return s;
 }
 
-async function extractFromTab() {
-  const tab = await getTab();
-  if (!tab || !/^https?:/.test(tab.url || '')) throw new Error('Open a job posting (http/https page) first.');
+async function extractFromTab(tab) {
+  if (!tab || !/^https?:/.test(tab.url || '')) throw Object.assign(new Error('This tab is not a web page. Open a job posting and the panel will read it.'), { empty: true });
   const run = async (allFrames) => {
     await chrome.scripting.executeScript({ target: { tabId: tab.id, allFrames }, files: ['extractor.js'] });
     return chrome.scripting.executeScript({ target: { tabId: tab.id, allFrames }, func: () => (window.__jdFillerExtract ? window.__jdFillerExtract() : null) });
@@ -114,7 +155,7 @@ async function extractFromTab() {
   let results;
   try { results = await run(true); } catch (e) { results = await run(false); }
   const items = (results || []).map((r) => r && r.result).filter(Boolean);
-  if (!items.length) throw new Error('Could not read this page. Chrome blocks extensions on some pages (Web Store, chrome://).');
+  if (!items.length) throw Object.assign(new Error('Chrome does not let extensions read this page (Web Store, chrome:// and some PDFs).'), { empty: true });
   items.sort((a, b) => scoreResult(b) - scoreResult(a));
   const best = items[0];
   if (!best.link) best.link = tab.url;
@@ -132,9 +173,9 @@ function fill(job) {
     if (el.tagName === 'SELECT') setSelect(el, v || '');
     else el.value = v || '';
   }
-  $('#jdLen').textContent = job.jd ? `${job.jd.length} chars` : 'empty';
+  $('#jdLen').textContent = job.jd ? `${job.jd.length.toLocaleString()} chars` : 'empty';
   const d = job._debug || {};
-  $('#debug').textContent = `Read via ${d.extractor || 'generic'}${d.jsonld ? ' + JSON-LD' : ''}${d.from_body ? ' (fallback: whole page text, trim the JD)' : ''}${d.err ? ' | error: ' + d.err : ''}`;
+  $('#debug').textContent = `Read via ${d.extractor || 'generic'}${d.jsonld ? ' + JSON-LD' : ''}${d.from_body ? ' · fallback: whole page text, trim the JD' : ''}${d.err ? ' · error: ' + d.err : ''}`;
   renderHero(job);
 }
 
@@ -153,36 +194,48 @@ function read() {
 // ---------- hero ----------
 function shortSalary(s) {
   if (!s || s === 'Not stated') return '';
-  return s.replace(/,000\b/g, 'K').replace(/\s*\/\s*year/i, '/yr').replace(/\s*(?:-|–|—|to)\s*/, '–').replace(/USD\s?/i, '$').replace(/\$\$/g, '$');
+  return s.replace(/,000\b/g, 'K').replace(/\s*\/\s*year/i, '/yr').replace(/\s*per year\.?/i, '/yr').replace(/\s*(?:-|–|—|to)\s*/, '–').replace(/USD\s?/i, '$').replace(/\$\$/g, '$');
+}
+function avatarColor(name) {
+  let h = 0;
+  for (const c of name || '') h = (h * 31 + c.charCodeAt(0)) >>> 0;
+  return `hsl(${h % 360} 52% 46%)`;
 }
 function renderHero(job) {
-  $('#h_role').textContent = job.role || 'No title found';
-  $('#h_company').textContent = job.company || '';
-  $('#h_location').textContent = job.location || '';
-  const chips = [];
-  if (job.work_mode && job.work_mode !== 'Unknown') chips.push(job.work_mode);
-  if (job.job_type && job.job_type !== 'Unknown') chips.push(job.job_type);
-  const sal = shortSalary(job.salary); if (sal) chips.push(sal);
-  if (job.experience && job.experience !== 'Not stated') chips.push(job.experience);
-  if (job.posted) chips.push(job.posted);
-  if (job.applicants) chips.push(job.applicants);
-  const sp = job.sponsorship === 'Sponsors' ? ['Sponsors visa', 'apply'] : job.sponsorship === 'No sponsorship' ? ['No sponsorship', 'maybe'] : null;
-  $('#h_chips').innerHTML = chips.map((c) => `<span class="chip">${esc(c)}</span>`).join('') + (sp ? `<span class="chip ${sp[1]}">${esc(sp[0])}</span>` : '');
   const co = (job.company || '').trim();
+  $('#h_role').textContent = job.role || 'No title found';
+  $('#h_company').textContent = co;
+  $('#h_location').textContent = job.location || '';
+  $('#h_sep').hidden = !(co && job.location);
+  const av = $('#h_avatar');
+  av.textContent = (co.match(/[A-Za-z0-9]/) || ['?'])[0].toUpperCase();
+  av.style.setProperty('--av', co ? avatarColor(co) : '');
+  const chips = [];
+  const modeIcon = { Remote: 'globe', Hybrid: 'home', 'On-site': 'building' };
+  if (job.work_mode && job.work_mode !== 'Unknown') chips.push([modeIcon[job.work_mode] || 'pin', job.work_mode]);
+  if (job.job_type && job.job_type !== 'Unknown') chips.push(['bag', job.job_type]);
+  const sal = shortSalary(job.salary); if (sal) chips.push(['money', sal]);
+  if (job.experience && job.experience !== 'Not stated') chips.push(['ladder', job.experience]);
+  if (job.posted) chips.push(['clock', job.posted]);
+  if (job.applicants) chips.push(['users', job.applicants]);
+  const sp = job.sponsorship === 'Sponsors' ? ['Sponsors visa', 'apply'] : job.sponsorship === 'No sponsorship' ? ['No sponsorship', 'maybe'] : null;
+  $('#h_chips').innerHTML = (sp ? `<span class="chip ${sp[1]}">${ico('shield')}${esc(sp[0])}</span>` : '') + chips.map(([i, c]) => `<span class="chip">${ico(i)}${esc(c)}</span>`).join('');
   const q = encodeURIComponent;
+  $('#research').hidden = !co;
+  $('#r_company').textContent = co;
   $('#h_links').innerHTML = co ? [
-    [`https://www.google.com/search?q=${q(co + ' H-1B sponsorship history h1bgrader')}`, 'H-1B history'],
-    [`https://www.linkedin.com/search/results/people/?keywords=${q(co + ' ' + SCHOOL)}`, 'Alumni at ' + co],
-    [`https://www.linkedin.com/search/results/people/?keywords=${q(co + ' recruiter')}`, 'Recruiters'],
-    [`https://www.glassdoor.com/Search/results.htm?keyword=${q(co)}`, 'Glassdoor'],
-    [`https://www.google.com/search?q=${q(co + ' e-verify employer')}`, 'E-Verify']
-  ].map(([href, text]) => `<a href="${href}" target="_blank" rel="noopener">${esc(text)}</a>`).join('') : '';
+    [`https://www.google.com/search?q=${q(co + ' H-1B sponsorship history h1bgrader')}`, 'H-1B history', 'shield'],
+    [`https://www.linkedin.com/search/results/people/?keywords=${q(co + ' ' + SCHOOL)}`, 'Alumni there', 'grad'],
+    [`https://www.linkedin.com/search/results/people/?keywords=${q(co + ' recruiter')}`, 'Recruiters', 'users'],
+    [`https://www.glassdoor.com/Search/results.htm?keyword=${q(co)}`, 'Glassdoor', 'star'],
+    [`https://www.google.com/search?q=${q(co + ' e-verify employer')}`, 'E-Verify', 'check']
+  ].map(([href, text, i]) => `<a href="${href}" target="_blank" rel="noopener" title="${esc(text)}">${ico(i)}<span>${esc(text)}</span></a>`).join('') : '';
 }
 
 // ---------- template rendering ----------
 function render(tpl, job) {
   const val = (k) => {
-    let v = job[k];
+    const v = job[k];
     if (k === 'auth_lines') return Array.isArray(v) && v.length ? v.map((l) => '- "' + l + '"').join('\n') : '- (none found)';
     if (k === 'date') return todayStr();
     if (k === 'score') return lastVerdict && typeof lastVerdict.score === 'number' ? `${lastVerdict.score}% (${lastVerdict.reason || ''})` : 'Not checked';
@@ -195,14 +248,14 @@ function render(tpl, job) {
 function factsTemplate(tpl) {
   const lines = tpl.split('\n');
   const idx = lines.findIndex((l) => l.includes('{{jd}}'));
-  let head = idx === -1 ? lines : lines.slice(0, idx);
+  const head = idx === -1 ? lines : lines.slice(0, idx);
   while (head.length && /^\s*$|^[-=_\s]*(?:job description)?[-=_\s]*$/i.test(head[head.length - 1])) head.pop();
   return head.join('\n');
 }
 function resumePrompt(job) {
   const v = lastVerdict || {};
   const lines = [
-    `Tailor my resume for this job. Use only my real experience; do not add tools or results I have not listed.`,
+    'Tailor my resume for this job. Use only my real experience; do not add tools or results I have not listed.',
     `Role: ${job.role || 'Not stated'} at ${job.company || 'Not stated'} (${job.location || 'Not stated'}, ${job.work_mode || 'Unknown'})`,
     `Link: ${job.link || ''}`,
     v.keywords && v.keywords.length ? `Keywords from the JD to include where true: ${v.keywords.join(', ')}` : '',
@@ -220,87 +273,143 @@ function resumePrompt(job) {
 function runRules() {
   const job = read();
   lastRules = window.JDRules ? window.JDRules.check(job) : { skip: [], maybe: [] };
-  const item = (h) => `<b>${esc(h.rule)}</b><span class="q">"${esc(h.quote)}"</span>`;
+  const item = (h) => `<b>${esc(h.rule)}</b><span class="q">“${esc(h.quote)}”</span>`;
   let html = '';
-  if (lastRules.skip.length) html += `<div class="banner skip"><div class="body"><span class="head">Auto-skip</span>${lastRules.skip.map(item).join('')}</div></div>`;
-  if (lastRules.maybe.length) html += `<div class="banner maybe"><div class="body"><span class="head">Worth a second look</span>${lastRules.maybe.map(item).join('')}</div></div>`;
+  if (lastRules.skip.length) html += `<div class="banner skip"><svg class="b-ico" viewBox="0 0 20 20">${ICON.ban}</svg><div class="body"><span class="head">Auto-skip</span>${lastRules.skip.map(item).join('')}</div></div>`;
+  if (lastRules.maybe.length) html += `<div class="banner maybe"><svg class="b-ico" viewBox="0 0 20 20">${ICON.alert}</svg><div class="body"><span class="head">Worth a second look</span>${lastRules.maybe.map(item).join('')}</div></div>`;
   $('#rules').innerHTML = html;
   return lastRules;
 }
 
-// ---------- score ring + verdict ----------
-function setRing(state, score) {
-  const ring = $('#ringBtn');
+// ---------- score card ----------
+const IDLE_REASON = 'Claude reads the description against your profile and returns a 0–100 apply score.';
+function setScore(state, v) {
+  const card = $('#scoreCard');
   const fill = $('#ringFill');
-  const text = $('#ringText');
-  ring.className = 'ring';
-  if (state === 'busy') { ring.classList.add('busy'); text.textContent = '…'; fill.style.strokeDashoffset = 95; return; }
-  if (state === 'empty' || typeof score !== 'number') { ring.classList.add('empty'); text.textContent = 'Score'; fill.style.strokeDashoffset = 125.66; return; }
-  const band = bandFor(score);
-  ring.classList.add(band);
-  text.textContent = `${score}%`;
-  fill.style.strokeDashoffset = 125.66 * (1 - score / 100);
+  const num = $('#ringText');
+  const unit = $('#ringUnit');
+  const facts = $('#scoreFacts');
+  if (state === 'busy') {
+    card.dataset.band = 'busy';
+    num.textContent = ''; unit.textContent = '';
+    $('#scoreBand').textContent = 'Scoring…';
+    $('#scoreReason').textContent = `Opus 5.5 is reading the description${$('#deep').checked ? ' at xhigh effort' : ''}.`;
+    facts.innerHTML = '';
+    return;
+  }
+  if (state === 'empty' || !v || typeof v.score !== 'number') {
+    card.dataset.band = 'empty';
+    fill.style.strokeDashoffset = RING_C;
+    num.textContent = '—'; unit.textContent = '';
+    $('#scoreBand').textContent = 'Not scored';
+    $('#scoreReason').textContent = IDLE_REASON;
+    facts.innerHTML = '';
+    $('#checkLabel').textContent = 'Check fit';
+    return;
+  }
+  const band = bandFor(v.score);
+  card.dataset.band = band;
+  num.textContent = v.score; unit.textContent = '%';
+  requestAnimationFrame(() => { fill.style.strokeDashoffset = RING_C * (1 - v.score / 100); });
+  $('#scoreBand').textContent = `${bandWord[band]}`;
+  $('#scoreReason').textContent = v.reason || '';
+  facts.innerHTML = [said(v.level), said(v.job_type), said(v.years_asked) && `asks ${said(v.years_asked)}`, said(v.pay)].filter(Boolean).map((t) => `<span>${esc(t)}</span>`).join('');
+  $('#checkLabel').textContent = 'Check again';
+}
+
+function authClass(s) {
+  if (/sponsors visa|opt\/cpt ok/i.test(s)) return 'apply';
+  if (/citizens only/i.test(s)) return 'skip';
+  if (/no sponsorship/i.test(s)) return 'maybe';
+  return '';
 }
 
 function verdictHtml(v, meta) {
-  const row = (k, html, cls) => (html ? `<div class="row${cls ? ' ' + cls : ''}"><span class="k">${k}</span><span class="v">${html}</span></div>` : '');
-  const said = (x) => { const t = (x == null ? '' : String(x)).trim(); return t && !/^(not stated|unknown|none|n\/a|-)$/i.test(t) ? t : ''; };
   const quotes = (v.auth && v.auth.quotes || []).filter(Boolean);
-  const fit = (v.fit || []).slice(0, 3).map((f) => `<span class="tag ${esc(f.level)}">${esc(f.point)} · ${esc(f.level).toLowerCase()}</span>`).join('');
+  const authS = said(v.auth && v.auth.sponsorship) || 'Not mentioned';
+  const fit = (v.fit || []).slice(0, 5);
   const flags = (v.red_flags || []).filter(Boolean);
   const kws = (v.keywords || []).filter(Boolean);
-  const band = v.verdict || bandFor(v.score || 0);
-  const roleBits = [said(v.level), said(v.job_type), said(v.years_asked) && `asks ${said(v.years_asked)}`, said(v.pay)].filter(Boolean).map(esc).join(' · ');
-  const authBits = [said(v.auth && v.auth.sponsorship) ? esc(v.auth.sponsorship) : '', quotes.length ? `<span class="muted">${quotes.map((q) => `"${esc(q)}"`).join('<br>')}</span>` : ''].filter(Boolean).join('<br>');
-  return `<div class="verdict">
-    <div class="lead ${esc(band)}"><b>${typeof v.score === 'number' ? v.score + '% · ' + bandWord[band] : esc(band)}.</b> ${esc(v.reason)}</div>
-    <div class="rows">
-    ${row('Role', roleBits)}
-    ${row('Auth', `${authBits || '<span class="muted">Not mentioned</span>'}<br><span class="muted">OPT day ${optDay()} of ${OPT_LIMIT}</span>`)}
-    ${row('Fit', fit ? `<span class="fit">${fit}</span>` : '')}
-    ${row('Lead with', esc(said(v.lead_with)))}
-    ${row("Don't claim", esc(said(v.dont_claim)))}
-    ${row('Do now', esc(said(v.do_now)))}
-    ${kws.length ? row('Keywords', `<span class="kw">${kws.map((k) => `<span class="chip">${esc(k)}</span>`).join('')}<button id="copyKw" class="quiet" title="Copy keywords">Copy</button></span>`) : ''}
-    ${flags.length ? row('Red flags', esc(flags.join('; ')), 'flag') : ''}
-    <div class="meta">${esc(meta.model)} · ${(meta.ms / 1000).toFixed(1)}s · ${meta.input} in / ${meta.output} out${meta.cache_read ? ' · cache hit' : meta.cache_write ? ' · cache written' : ''}</div>
-    </div>
-  </div>`;
+  const strat = [
+    ['lead', 'up', 'Lead with', said(v.lead_with)],
+    ['avoid', 'ban', "Don't claim", said(v.dont_claim)],
+    ['next', 'check', 'Do now', said(v.do_now)]
+  ].filter((s) => s[3]);
+  const blocks = [];
+  blocks.push(`<section class="card block reveal">
+      <div class="block-title">Work authorization</div>
+      <div class="auth-status"><span class="pill ${authClass(authS)}">${esc(authS)}</span><span class="muted">OPT day ${optDay()} of ${OPT_LIMIT}</span></div>
+      ${quotes.map((q) => `<blockquote class="quote">“${esc(q)}”</blockquote>`).join('')}
+    </section>`);
+  if (fit.length) {
+    blocks.push(`<section class="card block reveal">
+      <div class="block-title">Fit<span class="count">${fit.length} key requirements</span></div>
+      <ul class="fit-list">${fit.map((f) => { const l = String(f.level || '').toLowerCase(); return `<li class="fit-item"><span class="fit-text">${esc(f.point)}</span><span class="meter ${esc(l)}"><i></i><i></i><i></i></span><span class="level ${esc(l)}">${esc(f.level)}</span></li>`; }).join('')}</ul>
+    </section>`);
+  }
+  if (strat.length) {
+    blocks.push(`<section class="card block reveal"><div class="block-title">Strategy</div><div class="strategy">${strat.map(([cls, i, k, val]) => `<div class="strat ${cls}"><span class="strat-ico">${ico(i)}</span><div><div class="strat-k">${k}</div><div class="strat-v">${esc(val)}</div></div></div>`).join('')}</div></section>`);
+  }
+  if (kws.length) {
+    blocks.push(`<section class="card block reveal"><div class="block-title">ATS keywords<button id="copyKw" class="btn ghost">Copy all</button></div><div class="kw">${kws.map((k) => `<span class="chip">${esc(k)}</span>`).join('')}</div></section>`);
+  }
+  if (flags.length) {
+    blocks.push(`<section class="card block flagged reveal"><div class="block-title">Red flags<span class="count">${flags.length}</span></div><ul class="flags">${flags.map((f) => `<li>${esc(f)}</li>`).join('')}</ul></section>`);
+  }
+  if (meta) blocks.push(`<div class="meta">${esc(meta.model)} · ${esc(meta.effort || (meta.deep ? 'xhigh' : 'medium'))} · ${(meta.ms / 1000).toFixed(1)}s · ${Number(meta.input).toLocaleString()} in / ${Number(meta.output).toLocaleString()} out${meta.cache_read ? ' · cache hit' : meta.cache_write ? ' · cache written' : ''}</div>`);
+  return blocks.join('');
 }
 
-function errorRow(prefix, err, retryId) {
-  return `<div class="error-row"><span class="err">${esc(prefix)} ${esc(err)}</span><button id="${retryId}" class="quiet">Retry</button></div>`;
+function showVerdict(v, meta) {
+  $('#verdict').innerHTML = verdictHtml(v, meta);
+  setScore('done', v);
+  const kwBtn = $('#copyKw');
+  if (kwBtn) kwBtn.addEventListener('click', () => copy((v.keywords || []).join(', '), 'Keywords copied'));
+}
+
+function errorCard(prefix, err, retryId) {
+  return `<section class="card error-row"><span class="err">${esc(prefix)} ${esc(err)}</span><button id="${retryId}" class="btn secondary sm">Retry</button></section>`;
 }
 
 async function doCheck() {
   const job = read();
   if (!job.jd && !job.role) { toast('Nothing to check yet'); return; }
+  const tabAtStart = activeTab;
   const rules = runRules();
   const settings = await store.getSettings();
   const deep = $('#deep').checked;
-  const box = $('#verdict');
-  box.innerHTML = `<div class="verdict busy">Scoring with Opus 5.5${deep ? ' at xhigh effort' : ''}…</div>`;
-  setRing('busy');
-  $('#check').disabled = true; $('#check').textContent = 'Scoring…';
+  $('#verdict').innerHTML = `<section class="card skeleton"><div class="sk-title"><span class="dots"><b></b><b></b><b></b></span>Scoring with Opus 5.5${deep ? ' · Deep' : ''}</div><i></i><i></i><i></i><i></i><i></i></section>`;
+  setScore('busy');
+  setStatus('Scoring…', 'busy');
+  $('#check').disabled = true;
   try {
     const res = await send({ type: 'claude.verdict', job: stripForApi(job), rules, deep });
     if (!res || !res.ok) throw Object.assign(new Error((res && res.error) || 'No response from background'), { retryable: res && res.retryable });
     warnIfStale(res);
     normalizeVerdict(res.verdict);
-    lastVerdict = res.verdict;
+    // The user may have switched tabs while Claude was thinking: file the result under the tab it belongs to.
+    if (tabAtStart && activeTab && keyFor(tabAtStart) !== keyFor(activeTab)) {
+      const snap = cache.get(keyFor(tabAtStart));
+      if (snap) { snap.verdict = res.verdict; snap.meta = res.meta; }
+      pushScore(tabAtStart.id, res.verdict);
+      return;
+    }
+    lastVerdict = res.verdict; lastMeta = Object.assign({ deep }, res.meta);
     current = Object.assign(current || {}, { verdict: res.verdict, verdict_meta: res.meta });
-    box.innerHTML = verdictHtml(res.verdict, res.meta);
-    setRing('done', res.verdict.score);
-    const kwBtn = $('#copyKw'); if (kwBtn) kwBtn.addEventListener('click', () => copy((res.verdict.keywords || []).join(', '), 'Keywords copied'));
+    showVerdict(lastVerdict, lastMeta);
+    pushScore(activeTab && activeTab.id, lastVerdict);
+    setStatus(`Read from ${job.source || 'page'}`, 'on');
+    saveSnapshot();
     const score = typeof res.verdict.score === 'number' ? res.verdict.score : 0;
     if (settings.autoLog && score >= Number(settings.autoLogMin || 70)) await logToNotion(true);
   } catch (e) {
-    box.innerHTML = errorRow('Claude:', e.message, 'retryCheck');
-    setRing('empty');
+    $('#verdict').innerHTML = errorCard('Claude:', e.message, 'retryCheck');
+    setScore('empty');
+    setStatus('Scoring failed', 'err');
     $('#retryCheck').addEventListener('click', doCheck);
   } finally {
     $('#check').disabled = false;
-    $('#check').textContent = lastVerdict ? 'Check again' : 'Check fit';
+    if (!lastVerdict) $('#checkLabel').textContent = 'Check fit';
   }
 }
 
@@ -311,136 +420,64 @@ function stripForApi(job) {
 }
 
 // ---------- Notion ----------
-function notionLine(html) { $('#notion').innerHTML = html; }
+function notionLine(html, cls) {
+  notionState = html ? { html, cls: cls || '' } : null;
+  const el = $('#notion');
+  el.className = 'notion' + (cls ? ' ' + cls : '');
+  el.innerHTML = html || '';
+}
 
 async function logToNotion(auto) {
   const job = read();
   if (!job.link) { toast('No job link to log'); return; }
-  notionLine(`<span class="muted">${auto ? 'Score above your threshold, logging to Notion…' : 'Logging to Notion…'}</span>`);
+  notionLine(auto ? 'Score clears your threshold, logging to Notion…' : 'Logging to Notion…', 'busy');
   $('#logNotion').disabled = true;
   try {
     const res = await send({ type: 'notion.create', job: stripForApi(job), verdict: lastVerdict });
     if (!res || !res.ok) throw new Error((res && res.error) || 'No response from background');
     notionPage = res.page;
-    const link = res.page.url ? `<a href="${esc(res.page.url)}" target="_blank" rel="noopener">Open in Notion</a>` : '';
+    const link = res.page.url ? `<a href="${esc(res.page.url)}" target="_blank" rel="noopener">Open in Notion ↗</a>` : '';
     if (res.exists) {
-      notionLine(`Already logged. ${link}`);
-      await upsertSaved(Object.assign({}, job, { verdict: lastVerdict }), { stage: 'Applied', applied: true, notion_page_id: res.page.id, notion_url: res.page.url });
+      notionLine(`Already in your tracker. ${link}`, 'ok');
     } else {
-      notionLine(`Logged to Notion. ${link} <button id="undoNotion" class="quiet danger">Undo</button>`);
-      $('#undoNotion').addEventListener('click', undoNotion);
-      await markApplied(job, res.page);
+      notionLine(`Logged to Notion. ${link} <button id="undoNotion" class="btn ghost danger">Undo</button>`, 'ok');
       toast('Logged to Notion');
     }
   } catch (e) {
-    notionLine(`<span class="err">Notion: ${esc(e.message)}</span> <button id="retryNotion" class="quiet">Retry</button>`);
-    $('#retryNotion').addEventListener('click', () => logToNotion(false));
+    notionLine(`<span class="err">Notion: ${esc(e.message)}</span> <button id="retryNotion" class="btn ghost">Retry</button>`, 'err');
   } finally {
     $('#logNotion').disabled = false;
+    saveSnapshot();
   }
 }
 
 async function undoNotion() {
   if (!notionPage) return;
-  notionLine(`<span class="muted">Removing from Notion…</span>`);
+  notionLine('Removing from Notion…', 'busy');
   try {
     const res = await send({ type: 'notion.trash', pageId: notionPage.id });
     if (!res || !res.ok) throw new Error((res && res.error) || 'No response');
-    await unmarkApplied(read());
     notionPage = null;
     notionLine('Removed from Notion (moved to trash).');
   } catch (e) {
-    notionLine(`<span class="err">Undo failed: ${esc(e.message)}</span> <button id="retryUndo" class="quiet">Retry</button>`);
-    $('#retryUndo').addEventListener('click', undoNotion);
+    notionLine(`<span class="err">Undo failed: ${esc(e.message)}</span> <button id="retryUndo" class="btn ghost">Retry</button>`, 'err');
   }
+  saveSnapshot();
 }
 
-async function checkAlreadyLogged(link) {
+async function checkAlreadyLogged(link, key) {
   const s = await store.getSettings();
   if (!s.notionToken || !link) return;
   try {
     const res = await send({ type: 'notion.find', link });
-    if (res && res.ok && res.page) { notionPage = res.page; notionLine(`Already in Notion. <a href="${esc(res.page.url)}" target="_blank" rel="noopener">Open</a>`); }
+    if (res && res.ok && res.page && key === keyFor(activeTab)) {
+      notionPage = res.page;
+      notionLine(`Already in your tracker. <a href="${esc(res.page.url)}" target="_blank" rel="noopener">Open ↗</a>`, 'ok');
+      saveSnapshot();
+    }
   } catch (e) { /* quiet */ }
 }
 
-// ---------- tracker ----------
-const jobKey = (j) => (j.link || '') + '|' + (j.role || '') + '|' + (j.company || '');
-
-async function upsertSaved(job, patch) {
-  const jobs = await store.getJobs();
-  const idx = jobs.findIndex((j) => jobKey(j) === jobKey(job));
-  const now = new Date().toISOString();
-  const prev = idx >= 0 ? jobs[idx] : {};
-  const rec = Object.assign({}, prev, stripForApi(job), { verdict: job.verdict || prev.verdict, verdict_meta: job.verdict_meta || prev.verdict_meta, stage: prev.stage || 'Saved', saved_at: prev.saved_at || now, updated_at: now }, patch || {});
-  if (rec.stage !== 'Saved' && !rec.applied_on) rec.applied_on = todayStr();
-  rec.applied = rec.stage !== 'Saved';
-  if (idx >= 0) jobs[idx] = rec; else jobs.unshift(rec);
-  await store.setJobs(jobs);
-  await renderSaved();
-  return idx >= 0;
-}
-async function markApplied(job, page) {
-  await upsertSaved(Object.assign({}, job, { verdict: lastVerdict }), { stage: 'Applied', applied_on: todayStr(), notion_page_id: page.id, notion_url: page.url });
-}
-async function unmarkApplied(job) {
-  await upsertSaved(job, { stage: 'Saved', applied_on: '', notion_page_id: '', notion_url: '' });
-}
-async function saveCurrent() {
-  const job = read();
-  if (!job.link && !job.role) { toast('Nothing to save'); return; }
-  const existed = await upsertSaved(Object.assign({}, job, { verdict: lastVerdict || job.verdict }));
-  toast(existed ? 'Updated in tracker' : 'Saved to tracker');
-}
-
-function weekCount(jobs) {
-  const start = weekStart();
-  return jobs.filter((j) => j.applied_on && new Date(j.applied_on + 'T00:00:00') >= start).length;
-}
-
-async function renderSaved() {
-  const jobs = await store.getJobs();
-  const s = await store.getSettings();
-  $('#savedCount').textContent = jobs.length;
-  $('#weekStat').textContent = `${weekCount(jobs)} of ${s.weeklyGoal} applied this week`;
-  const counts = {};
-  for (const j of jobs) counts[j.stage || 'Saved'] = (counts[j.stage || 'Saved'] || 0) + 1;
-  $('#stageFilters').innerHTML = ['All', ...STAGES].filter((st) => st === 'All' || counts[st]).map((st) => `<button data-stage="${st}" class="${stageFilter === st ? 'on' : ''}">${st}${st === 'All' ? '' : ' ' + counts[st]}</button>`).join('');
-  const list = $('#savedList');
-  const shown = jobs.map((j, i) => ({ j, i })).filter(({ j }) => stageFilter === 'All' || (j.stage || 'Saved') === stageFilter);
-  if (!jobs.length) { list.innerHTML = '<div class="empty">Nothing tracked yet. Open a job and press Save, or log it to Notion.</div>'; return; }
-  if (!shown.length) { list.innerHTML = `<div class="empty">No jobs in ${esc(stageFilter)}.</div>`; return; }
-  list.innerHTML = shown.map(({ j, i }) => `
-    <div class="item" data-i="${i}">
-      <div class="head"><span class="name">${esc(j.role || '(no title)')} ${j.verdict ? `<span class="badge ${esc(normalizeVerdict(j.verdict).verdict)}">${esc(scoreLabel(j.verdict))}</span>` : ''}</span><span class="muted small">${esc((j.applied_on || j.saved_at || '').slice(0, 10))}</span></div>
-      <div class="sub">${esc([j.company, j.location, j.work_mode, j.source].filter(Boolean).join(' · '))}${j.notion_url ? ` · <a href="${esc(j.notion_url)}" target="_blank" rel="noopener">Notion</a>` : ''}</div>
-      <div class="controls">
-        <select data-act="stage" title="Stage">${STAGES.map((st) => `<option ${((j.stage || 'Saved') === st) ? 'selected' : ''}>${st}</option>`).join('')}</select>
-        <button data-act="load" class="quiet">Load</button>
-        <button data-act="copy" class="quiet">Copy</button>
-        <button data-act="open" class="quiet">Open</button>
-        <span class="grow"></span>
-        <button data-act="delete" class="quiet danger">Delete</button>
-      </div>
-    </div>`).join('');
-}
-
-function csvCell(v) { const s = String(v == null ? '' : v); return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; }
-async function exportCsv() {
-  const jobs = await store.getJobs();
-  if (!jobs.length) { toast('Nothing to export'); return; }
-  const cols = [
-    ['Role', 'role'], ['Company', 'company'], ['Job Link', 'link'], ['Location', 'location'], ['Work Mode', 'work_mode'], ['Source', 'source'],
-    ['Sponsorship', 'sponsorship'], ['Job Type', 'job_type'], ['Salary', 'salary'], ['Experience', 'experience'], ['Seniority', 'seniority'],
-    ['Score', (j) => (j.verdict && typeof j.verdict.score === 'number' ? j.verdict.score : '')], ['Band', (j) => (j.verdict ? j.verdict.verdict : '')],
-    ['Stage', (j) => j.stage || 'Saved'], ['Applied On', 'applied_on'], ['Saved On', (j) => (j.saved_at || '').slice(0, 10)], ['Notion', 'notion_url'],
-    ['Keywords', (j) => (j.verdict && j.verdict.keywords ? j.verdict.keywords.join('; ') : '')],
-    ['Notes', (j) => [j.verdict && j.verdict.reason, j.sponsorship_note, ...(j.auth_lines || [])].filter(Boolean).join(' | ')]
-  ];
-  const rows = [cols.map((c) => c[0]).join(',')];
-  for (const j of jobs) rows.push(cols.map((c) => csvCell(typeof c[1] === 'function' ? c[1](j) : j[c[1]])).join(','));
-  downloadText(rows.join('\n'), `jd-filler-${todayStr()}.csv`, 'text/csv');
-}
 function downloadText(text, filename, type) {
   const blob = new Blob([text], { type: type || 'text/plain' });
   const a = document.createElement('a');
@@ -462,6 +499,7 @@ async function saveFixture() {
       d.querySelectorAll('code').forEach((e) => { if (/^\s*[\[{]/.test(e.textContent)) e.remove(); });
       const keep = new Set(['class', 'id', 'href', 'alt', 'rel', 'type', 'property', 'name', 'content', 'itemprop', 'data-automation-id', 'data-test', 'data-testid', 'data-hook', 'data-job-id', 'data-qa', 'role', 'aria-label', 'lang', 'value']);
       d.querySelectorAll('*').forEach((el) => { for (const a of [...el.attributes]) if (!keep.has(a.name)) el.removeAttribute(a.name); });
+      d.querySelectorAll('#jdf-edge-tab').forEach((e) => e.remove());
       const w = d.createTreeWalker(d, NodeFilter.SHOW_COMMENT); const cs = []; while (w.nextNode()) cs.push(w.currentNode); cs.forEach((c) => c.remove());
       return { url: location.href, html: '<!doctype html>\n<!-- source: ' + location.href + ' -->\n' + d.documentElement.outerHTML.replace(/\n\s*\n+/g, '\n') };
     }
@@ -475,6 +513,9 @@ async function saveFixture() {
 }
 
 // ---------- settings ----------
+function setSeg(root, attr, value) {
+  root.querySelectorAll('button').forEach((b) => b.setAttribute('aria-checked', String(b.dataset[attr] === value)));
+}
 async function loadSettings() {
   const s = await store.getSettings();
   $('#s_anthropicKey').value = s.anthropicKey;
@@ -484,8 +525,9 @@ async function loadSettings() {
   $('#s_autoLog').checked = !!s.autoLog;
   $('#s_autoLogMin').value = s.autoLogMin;
   $('#s_autoCheck').checked = !!s.autoCheck;
-  $('#s_weeklyGoal').value = s.weeklyGoal;
   $('#deep').checked = !!s.deep;
+  setSeg($('#depth'), 'depth', s.deep ? 'deep' : 'std');
+  setSeg($('#edgeTabSeg'), 'edge', s.edgeTab || 'jobs');
   return s;
 }
 async function saveSettings() {
@@ -496,10 +538,8 @@ async function saveSettings() {
     notionDatabaseId: $('#s_notionDatabaseId').value.trim(),
     autoLog: $('#s_autoLog').checked,
     autoLogMin: Math.max(0, Math.min(100, parseInt($('#s_autoLogMin').value, 10) || 70)),
-    autoCheck: $('#s_autoCheck').checked,
-    weeklyGoal: Math.max(1, parseInt($('#s_weeklyGoal').value, 10) || 20)
+    autoCheck: $('#s_autoCheck').checked
   });
-  await renderSaved();
 }
 async function testKey(type, btn) {
   await saveSettings();
@@ -511,90 +551,154 @@ async function testKey(type, btn) {
   finally { btn.disabled = false; btn.textContent = 'Test'; }
 }
 
-// ---------- wiring ----------
-async function doExtract() {
-  setStatus('Reading page…');
-  $('#verdict').innerHTML = ''; $('#notion').innerHTML = ''; lastVerdict = null; notionPage = null; setRing('empty');
+// ---------- per-tab snapshots ----------
+function saveSnapshot() {
+  if (!activeTab || !current) return;
+  cache.set(keyFor(activeTab), { job: read(), verdict: lastVerdict, meta: lastMeta, notionPage, notionState, rules: lastRules });
+  if (cache.size > 40) cache.delete(cache.keys().next().value);
+}
+function resetJobView() {
+  $('#verdict').innerHTML = ''; notionLine(''); lastVerdict = null; lastMeta = null; notionPage = null; setScore('empty');
+}
+function showEmpty(msg) {
+  document.body.classList.add('empty');
+  $('#emptyState').hidden = false;
+  $('#emptyMsg').textContent = msg;
+}
+function hideEmpty() {
+  document.body.classList.remove('empty');
+  $('#emptyState').hidden = true;
+}
+function restore(snap) {
+  hideEmpty();
+  resetJobView();
+  fill(snap.job);
+  runRules();
+  lastVerdict = snap.verdict || null; lastMeta = snap.meta || null; notionPage = snap.notionPage || null;
+  if (lastVerdict) showVerdict(lastVerdict, lastMeta);
+  if (snap.notionState) notionLine(snap.notionState.html, snap.notionState.cls);
+  setStatus(`Read from ${snap.job.source || 'page'}`, 'on');
+  pushScore(activeTab && activeTab.id, lastVerdict);
+}
+
+let loadSeq = 0;
+async function loadActiveTab(force) {
+  const seq = ++loadSeq;
+  saveSnapshot();
+  const tab = await getTab();
+  if (seq !== loadSeq) return;
+  activeTab = tab ? { id: tab.id, url: tab.url } : null;
+  const snap = !force && cache.get(keyFor(activeTab));
+  if (snap) { restore(snap); return; }
+  setStatus('Reading page…', 'busy');
+  $('#reextract').classList.add('spin');
   try {
-    const job = await extractFromTab();
+    const job = await extractFromTab(tab);
+    if (seq !== loadSeq) return;
+    hideEmpty();
+    resetJobView();
     fill(job);
-    setStatus(`Read from ${job.source}`);
+    setStatus(`Read from ${job.source}`, 'on');
     runRules();
-    checkAlreadyLogged(job.link);
+    pushScore(tab.id, null);
+    saveSnapshot();
+    checkAlreadyLogged(job.link, keyFor(activeTab));
     const s = await store.getSettings();
-    if (s.autoCheck && s.anthropicKey) doCheck();
+    if (s.autoCheck && s.anthropicKey && (job.jd || job.role)) doCheck();
   } catch (e) {
-    setStatus(e.message || String(e));
-    if (!current) fill({ link: (await getTab())?.url || '', source: 'Other', work_mode: 'Unknown', job_type: 'Unknown', sponsorship: 'Unknown', auth_lines: [] });
+    if (seq !== loadSeq) return;
+    if (e.empty) { showEmpty(e.message); setStatus('No job on this tab'); }
+    else { setStatus(e.message || String(e), 'err'); }
+    if (!current) fill({ link: (tab && tab.url) || '', source: 'Other', work_mode: 'Unknown', job_type: 'Unknown', sponsorship: 'Unknown', auth_lines: [] });
+  } finally {
+    if (seq === loadSeq) $('#reextract').classList.remove('spin');
   }
 }
 
-function switchTab(name) {
-  $$('.tab').forEach((t) => t.classList.toggle('active', t.dataset.tab === name));
-  $$('.panel').forEach((p) => p.classList.toggle('active', p.id === 'panel-' + name));
-  $('#bar').style.display = name === 'job' ? '' : 'none';
+// ---------- views ----------
+function showView(name) {
+  const settings = name === 'settings';
+  document.body.classList.toggle('settings', settings);
+  $('#view-job').classList.toggle('active', !settings);
+  $('#view-settings').classList.toggle('active', settings);
+  $('#closeSettings').hidden = !settings;
+  $('#jobActions').hidden = settings;
+  $('#brand .mark').hidden = settings;
+  $('#viewTitle').textContent = settings ? 'Settings' : 'JD Filler';
+  window.scrollTo(0, 0);
 }
 
-document.addEventListener('DOMContentLoaded', async () => {
-  $('#optDay').textContent = `OPT day ${optDay()} of ${OPT_LIMIT}`;
-  $$('.tab').forEach((t) => t.addEventListener('click', () => switchTab(t.dataset.tab)));
+function renderOpt() {
+  const d = optDay();
+  const pct = Math.max(0, Math.min(100, (d / OPT_LIMIT) * 100));
+  $('#optFill').style.width = pct + '%';
+  $('#opt').dataset.level = d > 75 ? 'high' : d > 45 ? 'mid' : 'low';
+  $('#optDay').textContent = `Day ${d} / ${OPT_LIMIT} · ${Math.max(0, OPT_LIMIT - d)} left`;
+}
 
+// ---------- wiring ----------
+document.addEventListener('DOMContentLoaded', async () => {
+  renderOpt();
+
+  // The panel lives in one window. Tell the background so the edge tab can show "open", and follow that window's tabs.
+  try { if (chrome.windows) windowId = (await chrome.windows.getCurrent()).id; } catch (e) { /* harness */ }
+  try { if (windowId != null && chrome.runtime.connect) chrome.runtime.connect({ name: `panel:${windowId}` }); } catch (e) { /* harness */ }
+  if (chrome.tabs.onActivated) {
+    chrome.tabs.onActivated.addListener((info) => { if (windowId == null || info.windowId === windowId) loadActiveTab(); });
+    let t = null;
+    chrome.tabs.onUpdated.addListener((tabId, change) => {
+      if (!activeTab || tabId !== activeTab.id) return;
+      // SPAs (LinkedIn) change the URL first and render the new job a moment later.
+      if (change.url && change.url !== activeTab.url) { clearTimeout(t); t = setTimeout(() => loadActiveTab(), 900); }
+      else if (change.status === 'complete' && document.body.classList.contains('empty')) { clearTimeout(t); t = setTimeout(() => loadActiveTab(true), 300); }
+    });
+    chrome.tabs.onRemoved.addListener((tabId) => { for (const k of cache.keys()) if (k.startsWith(tabId + '|')) cache.delete(k); });
+  }
+
+  $('#openSettings').addEventListener('click', () => showView('settings'));
+  $('#closeSettings').addEventListener('click', () => showView('job'));
   $('#check').addEventListener('click', doCheck);
-  $('#ringBtn').addEventListener('click', doCheck);
+  $('#ringBtn').addEventListener('click', () => { if (!$('#check').disabled) doCheck(); });
+  $('#depth').addEventListener('click', (e) => {
+    const b = e.target.closest('button'); if (!b) return;
+    const deep = b.dataset.depth === 'deep';
+    $('#deep').checked = deep; setSeg($('#depth'), 'depth', b.dataset.depth);
+    store.setSettings({ deep });
+  });
+  $('#edgeTabSeg').addEventListener('click', (e) => {
+    const b = e.target.closest('button'); if (!b) return;
+    setSeg($('#edgeTabSeg'), 'edge', b.dataset.edge);
+    store.setSettings({ edgeTab: b.dataset.edge });
+    toast(b.dataset.edge === 'off' ? 'Edge tab hidden' : b.dataset.edge === 'always' ? 'Edge tab on every page' : 'Edge tab on job pages');
+  });
+
   const menu = $('#moreMenu'); const moreBtn = $('#moreBtn');
   const showMenu = (on) => { menu.hidden = !on; moreBtn.setAttribute('aria-expanded', String(on)); };
   moreBtn.addEventListener('click', (e) => { e.stopPropagation(); showMenu(menu.hidden); });
   menu.addEventListener('click', (e) => { if (e.target.closest('button, a')) showMenu(false); });
   document.addEventListener('click', (e) => { if (!e.target.closest('.menu-wrap')) showMenu(false); });
-  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') showMenu(false); });
-  $('#deep').addEventListener('change', () => store.setSettings({ deep: $('#deep').checked }));
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') { showMenu(false); if (document.body.classList.contains('settings')) showView('job'); }
+    if ((e.metaKey || e.ctrlKey) && e.key === 'Enter' && !document.body.classList.contains('settings')) { e.preventDefault(); if (!$('#check').disabled) doCheck(); }
+  });
+
+  // Delegated so buttons re-created by notionLine() keep working.
+  $('#notion').addEventListener('click', (e) => {
+    const id = e.target.closest('button') && e.target.closest('button').id;
+    if (id === 'undoNotion') undoNotion();
+    if (id === 'retryNotion') logToNotion(false);
+    if (id === 'retryUndo') undoNotion();
+  });
+
   $('#logNotion').addEventListener('click', () => logToNotion(false));
   $('#copyResume').addEventListener('click', () => copy(resumePrompt(read()), 'Resume prompt copied'));
-  $('#copy').addEventListener('click', async () => copy(render(await store.getTemplate(), read()), 'Copied'));
+  $('#copy').addEventListener('click', async () => copy(render(await store.getTemplate(), read()), 'Copied: facts + JD'));
   $('#copyFacts').addEventListener('click', async () => copy(render(factsTemplate(await store.getTemplate()), read()), 'Facts copied'));
   $('#copyJson').addEventListener('click', () => { const j = read(); delete j._debug; if (lastVerdict) j.verdict = lastVerdict; copy(JSON.stringify(j, null, 2), 'JSON copied'); });
-  $('#save').addEventListener('click', saveCurrent);
-  $('#reextract').addEventListener('click', doExtract);
-  ['#f_jd', '#f_role', '#f_salary'].forEach((sel) => $(sel).addEventListener('change', () => { runRules(); renderHero(read()); }));
-  ['#f_company', '#f_location', '#f_work_mode', '#f_job_type', '#f_sponsorship', '#f_posted', '#f_applicants', '#f_experience', '#f_source'].forEach((sel) => $(sel).addEventListener('change', () => renderHero(read())));
-
-  $('#exportCsv').addEventListener('click', exportCsv);
-  $('#clearSaved').addEventListener('click', async (e) => {
-    const b = e.currentTarget;
-    if (b.dataset.armed) { delete b.dataset.armed; b.textContent = 'Clear all'; await store.setJobs([]); await renderSaved(); toast('Tracker cleared'); return; }
-    b.dataset.armed = '1'; b.textContent = 'Click again to confirm';
-    setTimeout(() => { delete b.dataset.armed; b.textContent = 'Clear all'; }, 3000);
-  });
-  $('#stageFilters').addEventListener('click', (e) => { const b = e.target.closest('[data-stage]'); if (!b) return; stageFilter = b.dataset.stage; renderSaved(); });
-  $('#savedList').addEventListener('change', async (e) => {
-    const sel = e.target.closest('select[data-act="stage"]'); if (!sel) return;
-    const i = Number(e.target.closest('.item').dataset.i);
-    const jobs = await store.getJobs(); const j = jobs[i]; if (!j) return;
-    j.stage = sel.value; j.applied = j.stage !== 'Saved';
-    if (j.applied && !j.applied_on) j.applied_on = todayStr();
-    if (!j.applied) j.applied_on = '';
-    j.updated_at = new Date().toISOString();
-    await store.setJobs(jobs); await renderSaved();
-  });
-  $('#savedList').addEventListener('click', async (e) => {
-    const btn = e.target.closest('button[data-act]');
-    if (!btn) return;
-    const i = Number(e.target.closest('.item').dataset.i);
-    const jobs = await store.getJobs();
-    const j = jobs[i];
-    if (!j) return;
-    const act = btn.dataset.act;
-    if (act === 'load') {
-      fill(j); lastVerdict = j.verdict || null;
-      $('#verdict').innerHTML = j.verdict ? verdictHtml(j.verdict, j.verdict_meta || { model: 'saved', ms: 0, input: 0, output: 0 }) : '';
-      setRing(j.verdict ? 'done' : 'empty', j.verdict && j.verdict.score);
-      notionLine(j.notion_url ? `Logged. <a href="${esc(j.notion_url)}" target="_blank" rel="noopener">Open in Notion</a>` : '');
-      switchTab('job'); setStatus('Loaded from tracker'); runRules();
-    }
-    else if (act === 'copy') copy(render(await store.getTemplate(), j), 'Copied');
-    else if (act === 'open' && j.link) chrome.tabs.create({ url: j.link });
-    else if (act === 'delete') { jobs.splice(i, 1); await store.setJobs(jobs); await renderSaved(); }
-  });
+  $('#reextract').addEventListener('click', () => loadActiveTab(true));
+  $('#emptyRetry').addEventListener('click', () => loadActiveTab(true));
+  ['#f_jd', '#f_role', '#f_salary'].forEach((sel) => $(sel).addEventListener('change', () => { runRules(); renderHero(read()); saveSnapshot(); }));
+  ['#f_company', '#f_location', '#f_work_mode', '#f_job_type', '#f_sponsorship', '#f_posted', '#f_applicants', '#f_experience', '#f_source'].forEach((sel) => $(sel).addEventListener('change', () => { renderHero(read()); saveSnapshot(); }));
 
   $('#template').value = await store.getTemplate();
   $('#saveTemplate').addEventListener('click', async () => { await store.setTemplate($('#template').value); toast('Template saved'); });
@@ -603,11 +707,10 @@ document.addEventListener('DOMContentLoaded', async () => {
   $('#testClaude').addEventListener('click', (e) => testKey('claude.test', e.currentTarget));
   $('#testNotion').addEventListener('click', (e) => testKey('notion.test', e.currentTarget));
   $('#saveFixture').addEventListener('click', saveFixture);
-  $('#f_jd').addEventListener('input', () => { $('#jdLen').textContent = `${$('#f_jd').value.length} chars`; });
+  $('#f_jd').addEventListener('input', () => { $('#jdLen').textContent = `${$('#f_jd').value.length.toLocaleString()} chars`; });
 
   $('#openProfile').addEventListener('click', () => chrome.runtime.openOptionsPage());
   try { const { profile } = await chrome.storage.local.get('profile'); const sch = profile && profile.education && profile.education[0] && profile.education[0].school; if (sch) SCHOOL = sch; } catch (e) { /* ignore */ }
   await loadSettings();
-  await renderSaved();
-  await doExtract();
+  await loadActiveTab();
 });

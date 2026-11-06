@@ -1,13 +1,13 @@
 # JD Filler
 
-Personal Chrome extension. Open a job posting, press the toolbar button (or `Cmd+Shift+J`), and in one place you get:
+Personal Chrome extension that lives in Chrome's **side panel**. Open a job posting and click the **edge tab** pinned to the right side of the page (or the toolbar button, or `Cmd+Shift+J`). The panel stays open while you browse and follows whichever tab you are on, and in one place you get:
 
 1. **Clean facts** pulled from the page: company, role, link, source, location, work mode, job type, salary, experience asked, sponsorship (with the exact work-auth sentences), posted date, and the JD text.
 2. **A rule check in code** (no API call): a red banner for auto-skip hits and an amber one for maybes, each with the quoted sentence.
 3. **A Claude apply score** (0 to 100) with fit, what to lead with, what not to claim, and the next action. 70 and up means apply, 40 to 69 is a maybe, under 40 is a skip.
 4. **A row in your Notion Application Tracker**, created automatically when the score reaches your threshold (default 70, or by hand), with Undo.
 
-Plus: a **Profile page** (name, address, links, education, experience, skills by honesty level, EEO answers, each with a copy button) that also feeds Claude; **insider links** per company (H-1B history, alumni from your school, recruiters, Glassdoor, E-Verify); **ATS keywords** and a **resume-tailoring prompt**; a **Tracker** with stages (Saved, Applied, OA, Screen, Interview, Offer, Rejected), stage filters and a weekly goal; Copy (template) and CSV export.
+Plus: a **Profile page** (name, address, links, education, experience, skills by honesty level, EEO answers, each with a copy button) that also feeds Claude; **insider links** per company (H-1B history, alumni from your school, recruiters, Glassdoor, E-Verify); **ATS keywords** and a **resume-tailoring prompt**; Copy (template).
 
 ## Install
 
@@ -16,14 +16,14 @@ Plus: a **Profile page** (name, address, links, education, experience, skills by
 3. Pin the icon. Shortcut `Cmd+Shift+J` (Mac) / `Ctrl+Shift+J`; change it at `chrome://extensions/shortcuts`.
 4. After every `git pull`, press the refresh icon on the extension card.
 
-## Keys (Settings tab)
+## Keys (Settings, the gear icon)
 
 Both keys are stored in `chrome.storage.local` on this machine only. They are never synced and never printed.
 
 ### Anthropic API key
 1. Create a key at https://platform.claude.com/ (API keys).
 2. Paste it into **Anthropic API key**, press **Test**. The test lists the models your key can see and warns if `claude-opus-5-5` is missing.
-3. Calls go from the extension's background worker straight to `api.anthropic.com` with the `anthropic-dangerous-direct-browser-access: true` header. Every check uses Claude Opus 5.5 (`claude-opus-5-5`) at medium effort; the **Deep** toggle runs the same model at xhigh effort.
+3. Calls go from the extension's background worker straight to `api.anthropic.com` with the `anthropic-dangerous-direct-browser-access: true` header. Every check uses Claude Opus 5.5 (`claude-opus-5-5`) at medium effort; the **Deep** option runs the same model at xhigh effort.
 
 ### Notion token and database
 1. Go to https://www.notion.so/profile/integrations -> **New integration** (internal). Copy the secret.
@@ -50,27 +50,35 @@ The Notion page **body** is filled with the scraped job description (paragraph b
 
 ## Profile page
 
-Open it from **Settings → Profile** in the popup (or right-click the icon, Options). Every field autosaves to this computer and has a **Copy** button so you can paste into application forms. Sections: basics and address, links (LinkedIn, GitHub, X, portfolio, other), education, work experience, skills in three honesty levels (proven / listed only / never claim / no record), certifications, languages, targets, and the standard work-authorization and equal-employment answers. **Copy profile as text** gives one block for a chat bot; Export / Import JSON moves it between machines.
+Open it from **Settings → Your profile** in the side panel (or right-click the icon, Options). Every field autosaves to this computer and has a **Copy** button so you can paste into application forms. Sections: basics and address, links (LinkedIn, GitHub, X, portfolio, other), education, work experience, skills in three honesty levels (proven / listed only / never claim / no record), certifications, languages, targets, and the standard work-authorization and equal-employment answers. **Copy profile as text** gives one block for a chat bot; Export / Import JSON moves it between machines.
 
 Claude's system prompt is built from this page: positioning line, education, experience, targets, minimum pay and the skill levels. If the page has never been opened, a built-in copy of the same defaults is used.
 
-## The Job tab
+## The side panel
 
-The popup follows the macOS grouped-list style: grey page, white cards, system blue for actions, green / amber / red only for the score. One primary button per state.
+A calm, dense "pro tool" layout: slate greys, one indigo accent for actions, green / amber / red reserved for the score. Light and dark follow the system. It is fluid from 300 px up, so it works at whatever width you drag the side panel to.
 
-- **Card at the top** - company and location, the role, and chips for mode, type, pay, years asked, posted and applicants. The ring on the right is the score; it is the one bold element and clicking it runs Check.
-- **Check fit** - the primary button. It sends the page facts, the rule hits and the cleaned JD (max ~12k chars) to Claude Opus 5.5 and fills the ring. The label becomes **Scoring…** and then **Check again**. The **Deep** switch next to it uses xhigh effort instead of medium (slower, more careful; remembered).
-- **The card under it** - first line is the score and the one-line reason, coloured by band (green 70+, amber 40 to 69, red under 40). Rows follow only when Claude had something to say: Role (level, type, years asked, pay), Auth (with the quoted sentence and `OPT day X of 90`), Fit (three points tagged strong / partial / gap), Lead with, Don't claim, Do now, Keywords (with Copy), Red flags. Anything "Not stated" is hidden.
-- **Rule callouts** - "Auto-skip" (red dot) and "Worth a second look" (amber dot) appear above the card with the sentence that triggered them.
-- **⋯ menu** - Read the page again (after you click a different job in a LinkedIn list), Copy resume prompt (a tailoring prompt: role, company, the ATS keywords you can truthfully use, lead-with, don't-claim, fit map and JD), Copy facts only, Copy as JSON, and the company links: H-1B history, alumni from your school, recruiters, Glassdoor, E-Verify.
-- **Details / Job description** - two disclosure rows. Open Details to edit any field before you copy or log.
-- **Bottom bar** - **Copy** (your template: facts + JD), **Log to Notion**, **Save** to the tracker. Log to Notion first queries the data source for the same Job Link and shows "Already logged" instead of creating a duplicate; on success Stage is set to Applied, the JD is written into the page body, you get the page link and an **Undo** button (moves the page to trash). With the Settings option on (default), logging runs by itself when the score is at least the threshold you set (default 70).
+- **App bar** - the live dot and status ("Read from LinkedIn"), **Read again** and **Settings**. Under it, the **OPT clock**: a bar from day 1 to day 90 that turns amber after day 45 and red after day 75.
+- **Job card** - a coloured company monogram, company and location, the role, and chips for sponsorship, mode, type, pay, years asked, posted and applicants.
+- **Rule callouts** - "Auto-skip" (red) and "Worth a second look" (amber), each with the sentence that triggered it.
+- **Score card** - the ring is the one loud element. **Check fit** (or click the ring, or `Cmd+Enter`) sends the page facts, the rule hits and the cleaned JD (max ~12k chars) to Claude Opus 5.5. **Fast / Deep** picks medium or xhigh effort (remembered). The band (Apply 70+, Maybe 40 to 69, Skip under 40), the one-line reason and level / type / years / pay appear next to the ring, and a coloured stripe tops the card.
+- **Verdict cards** - Work authorization (status pill, `OPT day X of 90`, the quoted sentences), Fit (each key requirement with a three-step meter: strong / partial / gap), Strategy (Lead with, Don't claim, Do now), ATS keywords (Copy all), Red flags. Anything "Not stated" is hidden. The model, effort, time and tokens are in the grey line under them.
+- **Research** - one-click links for the company: H-1B history, alumni from your school, recruiters, Glassdoor, E-Verify.
+- **Details / Job description** - disclosure rows. Open Details to edit any field before you copy or log.
+- **Action bar** (sticky) - **Copy job** (your template: facts + JD), **Log to Notion**, and **⋯** (Copy resume prompt, Copy facts only, Copy as JSON). Log to Notion first queries the data source for the same Job Link and shows "Already in your tracker" instead of creating a duplicate; on success Stage is set to Applied, the JD is written into the page body, you get the page link and an **Undo** button (moves the page to trash). With the Settings option on (default), logging runs by itself when the score is at least the threshold you set (default 70).
 
-## Tracker tab
+Switching tabs swaps the panel to that tab's job. Each tab's job, score and Notion state are kept in memory, so going back to a tab shows its result again without another API call. On LinkedIn, clicking a different job in the list changes the URL and the panel re-reads it about a second later.
 
-Every saved or logged job with a stage select (Saved, Applied, OA, Screen, Interview, Offer, Rejected), filter chips per stage, the score badge, the Notion link, and Load / Copy / Open / Delete. The header shows "N of goal applied this week" (Monday to Sunday, goal in Settings). Logging to Notion sets the stage to Applied; Undo sets it back to Saved. Export CSV includes score, band, stage, keywords and notes.
+## The edge tab
 
-The OPT counter in the header is computed in code: day 1 = 2026-09-12, limit 90 days. Change `OPT_START` in `popup.js` if your EAD date differs.
+`edge-tab.js` is a content script that pins a small dark tab to the right edge of job pages (known job boards and ATS hosts, URLs with /jobs or /careers, or any page with `JobPosting` JSON-LD). It lives in a closed shadow root, so the page's CSS cannot restyle it.
+
+- **Click** opens the side panel; click again closes it (Chrome 141+). The tab turns indigo while the panel is open.
+- After a check, the tab shows the score with a coloured ring around the logo, so you can see the result without opening the panel. Hover for "82% apply".
+- **Drag** it up or down; the position is remembered. The small **×** hides it on that page until the next load.
+- Settings → **Edge tab on web pages**: Job pages (default), Everywhere, or Off.
+
+The OPT counter in the header is computed in code: day 1 = 2026-09-12, limit 90 days. Change `OPT_START` in `sidepanel.js` if your EAD date differs.
 
 ## Rule check (rules.js)
 
@@ -88,7 +96,7 @@ Each hit shows the exact sentence. Edit the JD or Salary field and the banner re
 
 Bad key (401), rate limit (429), server errors and network timeouts (20 s) show as a message with a **Retry** button. Nothing is sent anywhere except `api.anthropic.com` and `api.notion.com`.
 
-After a `git pull`, Chrome keeps running the old background service worker until you press the reload arrow on the JD Filler card at `chrome://extensions`. The popup notices the version mismatch and shows "Extension files changed: reload it" so a stale worker is not mistaken for a bug.
+After a `git pull`, Chrome keeps running the old background service worker until you press the reload arrow on the JD Filler card at `chrome://extensions`. The panel notices the version mismatch and shows "Extension files changed: reload it" so a stale worker is not mistaken for a bug.
 
 ## Supported sites
 
@@ -112,11 +120,12 @@ Fixtures: real captures of a Greenhouse page, a LinkedIn guest job view, a Workd
 
 ## Files
 
-- `manifest.json` - MV3; `activeTab`, `scripting`, `storage`; host permissions only for the two APIs
+- `manifest.json` - MV3; `sidePanel`, `scripting`, `storage`; host access to all sites so the panel can read whichever tab you switch to and the edge tab can run (network requests still go only to the two APIs)
 - `extractor.js` - injected into the page on demand, returns the job object
-- `rules.js` - hard rules (shared by popup and test page)
-- `background.js` - service worker: Claude verdict, Notion query / create / trash, key tests
-- `popup.html` / `popup.css` / `popup.js` - popup UI
-- `profile.html` / `profile.js` - profile page (options page)
-- `test-popup.html` / `test-profile.html` - UI smoke tests with a fake chrome API
+- `rules.js` - hard rules (shared by the panel and the test page)
+- `background.js` - service worker: Claude verdict, Notion query / create / trash, key tests, side panel open / close and open-state tracking
+- `sidepanel.html` / `sidepanel.css` / `sidepanel.js` - side panel UI
+- `edge-tab.js` - the edge tab content script
+- `profile.html` / `profile.css` / `profile.js` - profile page (options page)
+- `test-sidepanel.html` / `test-edge-tab.html` / `test-profile.html` - UI smoke tests with a fake chrome API
 - `fixtures/`, `test-extract.html` - extractor tests

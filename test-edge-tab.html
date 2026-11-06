@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>JD Filler - edge tab smoke test</title>
+<style>body { font: 15px/1.6 Georgia, serif; max-width: 640px; margin: 40px auto; color: #222; } .ctl { position: fixed; left: 8px; top: 8px; font: 12px monospace; background: #fef3c7; padding: 6px 8px; border-radius: 6px; display: flex; gap: 6px; }</style>
+<script type="application/ld+json">{"@type":"JobPosting","title":"Machine Learning Engineer"}</script>
+</head>
+<body>
+<div class="ctl">HARNESS
+  <button onclick="fire({type:'jdf.score',score:82,band:'APPLY'})">82</button>
+  <button onclick="fire({type:'jdf.score',score:66,band:'MAYBE'})">66</button>
+  <button onclick="fire({type:'jdf.score',score:18,band:'SKIP'})">18</button>
+  <button onclick="fire({type:'jdf.score',score:null})">clear</button>
+  <button onclick="fire({type:'jdf.panel',open:!window.__open}); window.__open=!window.__open">panel</button>
+</div>
+<h1>Machine Learning Engineer</h1>
+<p>A fake job page. The edge tab should appear on the right edge, because this page has JobPosting JSON-LD.</p>
+<script>
+// Fake chrome.* for a content script running in a normal tab.
+(function () {
+  const mem = {}; const listeners = []; const changeL = [];
+  window.fire = (m) => listeners.forEach((l) => l(m));
+  window.chrome = {
+    storage: { local: { get: async (k) => { const o = {}; for (const x of [].concat(k)) if (x in mem) o[x] = mem[x]; return o; }, set: async (o) => { Object.assign(mem, o); } }, onChanged: { addListener: (f) => changeL.push(f) } },
+    runtime: { onMessage: { addListener: (f) => listeners.push(f) }, sendMessage: async (m) => { console.log('sendMessage', m.type); if (m.type === 'jdf.togglePanel') { window.__open = !window.__open; return { ok: true, open: window.__open }; } return { ok: true, open: false }; } }
+  };
+})();
+</script>
+<script src="edge-tab.js"></script>
+</body>
+</html>

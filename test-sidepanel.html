@@ -3,16 +3,16 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>JD Filler - popup smoke test</title>
-<link rel="stylesheet" href="popup.css">
-<style>body { width: auto; max-height: none; padding-bottom: 0; } #root { width: 440px; min-height: 600px; margin: 0 auto; position: relative; background: var(--bg); } #root .top, #root .bar { position: sticky; } #root .bar { position: fixed; left: 50%; transform: translateX(-50%); width: 440px; right: auto; } #root .toast { bottom: 66px; } .harness { position: fixed; right: 8px; top: 8px; font: 11px monospace; background: #fef3c7; color: #78350f; padding: 4px 8px; border-radius: 6px; z-index: 9; }</style>
+<title>JD Filler - side panel smoke test</title>
+<link rel="stylesheet" href="sidepanel.css">
+<style>body { display: block; background: #d9dde4; } #root { width: 400px; min-height: 100vh; margin: 0 auto; display: flex; flex-direction: column; background: var(--bg); box-shadow: 0 0 0 1px rgba(0,0,0,.08); } .harness { position: fixed; left: 8px; top: 8px; font: 11px monospace; background: #fef3c7; color: #78350f; padding: 4px 8px; border-radius: 6px; z-index: 99; } @media (prefers-color-scheme: dark) { body { background: #000; } }</style>
 </head>
 <body>
 <div class="harness">HARNESS: fake chrome.*, fake Claude + Notion</div>
 <div id="root"></div>
 <script src="fixtures/linkedin-search-mock.fixture.js"></script>
 <script>
-// A fake chrome API so popup.js can run in a normal tab. No network calls.
+// A fake chrome API so sidepanel.js can run in a normal tab. No network calls.
 (function () {
   const mem = { local: {}, sync: {} };
   const area = (name) => ({
@@ -39,11 +39,11 @@
     scripting: { executeScript: async ({ files }) => (files ? [] : [{ result: await extractFromFixture() }]) },
     runtime: {
       openOptionsPage: () => log('openOptionsPage'),
-      getManifest: () => ({ version: '1.2.0' }),
+      getManifest: () => ({ version: '1.3.0' }),
       sendMessage: async (msg) => {
         log('sendMessage ' + msg.type + (msg.deep ? ' deep' : ''));
         await new Promise((r) => setTimeout(r, 250));
-        if (msg.type === 'claude.verdict') return { ok: true, version: '1.2.0', verdict: { score: 78, verdict: 'APPLY', reason: 'Entry-level analyst role, pay not below floor.', company: msg.job.company, role: msg.job.role, location: msg.job.location, work_mode: msg.job.work_mode, pay: msg.job.salary, level: 'Entry (I)', years_asked: '1+', job_type: 'Full-time', auth: { sponsorship: 'No sponsorship', quotes: ['Candidates must be authorized to work in the United States without the need for employer sponsorship now or in the future.'] }, fit: [{ point: 'SQL', level: 'Partial' }, { point: 'Python', level: 'Strong' }, { point: 'Power BI', level: 'Gap' }], lead_with: 'Python data pipelines, scikit-learn evaluation', dont_claim: 'Power BI', do_now: 'Apply with the data resume.', keywords: ['SQL', 'Python', 'dashboards', 'data pipelines', 'Power BI'], red_flags: ['No sponsorship stated'] }, meta: { model: msg.deep ? 'claude-sonnet-5-5' : 'claude-haiku-5-5', ms: 1234, input: 1800, output: 300, cache_read: 1200, cache_write: 0 } };
+        if (msg.type === 'claude.verdict') return { ok: true, version: '1.3.0', verdict: { score: 78, verdict: 'APPLY', reason: 'Entry-level analyst role, pay not below floor.', company: msg.job.company, role: msg.job.role, location: msg.job.location, work_mode: msg.job.work_mode, pay: msg.job.salary, level: 'Entry (I)', years_asked: '1+', job_type: 'Full-time', auth: { sponsorship: 'No sponsorship', quotes: ['Candidates must be authorized to work in the United States without the need for employer sponsorship now or in the future.'] }, fit: [{ point: 'SQL', level: 'Partial' }, { point: 'Python', level: 'Strong' }, { point: 'Power BI', level: 'Gap' }], lead_with: 'Python data pipelines, scikit-learn evaluation', dont_claim: 'Power BI', do_now: 'Apply with the data resume.', keywords: ['SQL', 'Python', 'dashboards', 'data pipelines', 'Power BI'], red_flags: ['No sponsorship stated'] }, meta: { model: 'claude-opus-5-5', ms: 1234, input: 1800, output: 300, cache_read: 1200, cache_write: 0 } };
         if (msg.type === 'notion.find') return { ok: true, page: null };
         if (msg.type === 'notion.create') return { ok: true, exists: false, page: { id: 'page-123', url: 'https://www.notion.so/page-123' } };
         if (msg.type === 'notion.trash') return { ok: true };
@@ -54,12 +54,12 @@
     }
   };
 })();
-// Load the real popup markup + scripts.
+// Load the real side panel markup + scripts.
 (async () => {
-  const html = await (await fetch('popup.html')).text();
+  const html = await (await fetch('sidepanel.html')).text();
   const body = html.replace(/[\s\S]*<body>/, '').replace(/<\/body>[\s\S]*/, '').replace(/<script[^>]*><\/script>/g, '');
   document.getElementById('root').innerHTML = body;
-  for (const src of ['rules.js', 'popup.js']) await new Promise((r) => { const s = document.createElement('script'); s.src = src; s.onload = r; document.body.appendChild(s); });
+  for (const src of ['rules.js', 'sidepanel.js']) await new Promise((r) => { const s = document.createElement('script'); s.src = src; s.onload = r; document.body.appendChild(s); });
   document.dispatchEvent(new Event('DOMContentLoaded'));
 })();
 </script>

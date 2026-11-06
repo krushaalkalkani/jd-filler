@@ -365,8 +365,44 @@ async function notionTest() {
   return { ok: true, message: `Token works (${me.name || me.type}). Data source "${title}" reachable.${missing.length ? ' Missing properties: ' + missing.join(', ') : ' All ' + need.length + ' properties present.'}` };
 }
 
+// ---------- side panel ----------
+// Toolbar button and Cmd+Shift+J open the side panel instead of a popup.
+function panelBehavior() { chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true }).catch(() => {}); }
+chrome.runtime.onInstalled.addListener(panelBehavior);
+chrome.runtime.onStartup.addListener(panelBehavior);
+panelBehavior();
+
+// Each open panel holds a port named `panel:<windowId>`, so we know which windows have it open.
+const openPanels = new Set();
+function tellTabs(windowId, open) {
+  chrome.tabs.query({ windowId }).then((tabs) => {
+    for (const t of tabs) chrome.tabs.sendMessage(t.id, { type: 'jdf.panel', open }).catch(() => {});
+  }).catch(() => {});
+}
+chrome.runtime.onConnect.addListener((port) => {
+  const m = /^panel:(\d+)$/.exec(port.name || '');
+  if (!m) return;
+  const windowId = Number(m[1]);
+  openPanels.add(windowId);
+  tellTabs(windowId, true);
+  port.onDisconnect.addListener(() => { openPanels.delete(windowId); tellTabs(windowId, false); });
+});
+
+// The edge tab on the page. sidePanel.open() needs the user's click, so it must run before any await.
+function edgeTabMessage(msg, sender, sendResponse) {
+  const windowId = sender.tab && sender.tab.windowId;
+  if (windowId == null) { sendResponse({ ok: false }); return; }
+  if (msg.type === 'jdf.panelState') { sendResponse({ ok: true, open: openPanels.has(windowId) }); return; }
+  if (openPanels.has(windowId) && chrome.sidePanel.close) {
+    chrome.sidePanel.close({ windowId }).then(() => sendResponse({ ok: true, open: false })).catch((e) => sendResponse({ ok: false, error: e.message }));
+  } else {
+    chrome.sidePanel.open({ windowId }).then(() => sendResponse({ ok: true, open: true })).catch((e) => sendResponse({ ok: false, error: e.message }));
+  }
+}
+
 // ---------- message router ----------
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+  if (msg && (msg.type === 'jdf.togglePanel' || msg.type === 'jdf.panelState')) { edgeTabMessage(msg, sender, sendResponse); return true; }
   const handlers = {
     'claude.verdict': () => claudeVerdict(msg),
     'claude.test': () => claudeTest(),
